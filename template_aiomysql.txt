@@ -1,0 +1,28 @@
+@app.post('/regis_karyawan')
+async def regis_karyawan(
+  request: Request
+):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+
+        try:
+          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          data = await request.json()
+
+          
+
+
+          
+          
+
+        except aiomysqlerror as e:
+          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+        except HTTPException as e:
+          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+
+      
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
