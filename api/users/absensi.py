@@ -1,11 +1,12 @@
 import asyncio
 from datetime import datetime, timedelta
 import json
+import shutil
 from typing import Optional
 import uuid
 import aiofiles
 import aiomysql
-from fastapi import APIRouter, Query, Depends, File, Form, Request, HTTPException, Security, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Query, Depends, File, Form, Request, HTTPException, Security, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, FileResponse
 from koneksi import get_db
 from fastapi_jwt import (
@@ -83,7 +84,7 @@ async def get_data(
             # Return dalam bentuk dict
             items = await cursor.fetchone()
           else:
-            q1 = "SELECT * FROM absensi WHERE MONTH(tanggal_absen) = %s and YEAR(tanggal_absen) = %s and id_karyawan = %s"
+            q1 = "SELECT * FROM absensi WHERE MONTH(tanggal_absen) = %s and YEAR(tanggal_absen) = %s and id_karyawan = %s ORDER BY DATE(tanggal_absen) ASC"
             await cursor.execute(q1, (month, year, user['id_karyawan']) )
 
             # Return dalam bentuk list
@@ -218,10 +219,18 @@ async def _get_schedule_and_time(pool: aiomysql.Pool, day_name: str):
       await cursor.execute(q, (day_name,))
       return await cursor.fetchone()
 
+
+def save_upload_file(upload: UploadFile, dest: str):
+  with open(dest, "wb") as f:
+    shutil.copyfileobj(upload.file, f)   # stream, no read() besar ke memori
+
+  print("Sukses Simpan Gambar")
+
 # Store Data Checkin
 @app.post('/check_in')
 async def absen_hadir(
   request: Request,
+  background_task: BackgroundTasks,
   user: JwtAuthorizationCredentials = Security(access_security),
 ):
   print("Eksekusi Fungsi Check In")
@@ -250,8 +259,8 @@ async def absen_hadir(
 
     # get form data
     data = await request.form()
-    #read foto_checkin
-    content = await data['foto_checkin'].read()
+    #read foto_checkin. jangan make read. lemot
+    # content = await data['foto_checkin'].read()
     # Generate Filename tapi blm di store ke disk
     filename = f"{uuid.uuid4()}.jpg"
     file_location = os.path.join(FOTO_CHECKIN, filename)
@@ -330,22 +339,23 @@ async def absen_hadir(
             )
           
           # Sistem Fire and Forget. klo begini proses dari route /check_in ga terhambat krna write file
-          async def _save_file_bg():
-            try:
-              # Write Filenya
-              loop = asyncio.get_event_loop()
-              await loop.run_in_executor(
-                FILE_IO_EXECUTOR,
-                lambda: open(file_location, 'wb').write(content)
-              )
-              # async with aiofiles.open(file_location, 'wb') as f:
-              #   await f.write(content)
-              print("Sukses Simpan File")
-            except Exception as e:
-              print(f"Gagal Simpan File di BG: {str(e)}")
+          # async def _save_file_bg():
+          #   try:
+          #     # Write Filenya
+          #     loop = asyncio.get_event_loop()
+          #     await loop.run_in_executor(
+          #       FILE_IO_EXECUTOR,
+          #       lambda: open(file_location, 'wb').write(content)
+          #     )
+          #     # async with aiofiles.open(file_location, 'wb') as f:
+          #     #   await f.write(content)
+          #     print("Sukses Simpan File")
+          #   except Exception as e:
+          #     print(f"Gagal Simpan File di BG: {str(e)}")
 
-          # Pakai asyncio utk run di bg
-          asyncio.create_task(_save_file_bg())
+          # # Pakai asyncio utk run di bg
+          # asyncio.create_task(_save_file_bg())
+          background_task.add_task(save_upload_file, data['foto_checkin'], file_location)
             
           return {
             "status": "ok",
@@ -508,8 +518,8 @@ async def absen_hadir(
 @app.put('/check_out')
 async def check_out(
   request: Request,
+  background_task: BackgroundTasks,
   user: JwtAuthorizationCredentials = Security(access_security),
-
 ):
   try:
     pool = await get_db()
@@ -528,8 +538,8 @@ async def check_out(
           filename = f"{uuid.uuid4()}.jpg"
           file_location = os.path.join(FOTO_CHECKOUT, filename)
 
-          #saveFile
-          content = await data['foto_checkout'].read()
+          #saveFile. Jangan Make Read. Bikin Lambat
+          # content = await data['foto_checkout'].read()
 
           q1 = """
             UPDATE absensi SET check_out = CURRENT_TIMESTAMP(), latitude_checkout = %s, longitude_checkout = %s,
@@ -559,22 +569,24 @@ async def check_out(
 
           # Concurrent
           # Sistem Fire and Forget. klo begini proses dari route /check_oyt ga terhambat krna write file
-          async def _save_file_bg():
-            try:
-              # Write Filenya
-              loop = asyncio.get_event_loop()
-              await loop.run_in_executor(
-                FILE_IO_EXECUTOR,
-                lambda: open(file_location, 'wb').write(content)
-              )
-              # async with aiofiles.open(file_location, 'wb') as f:
-              #   await f.write(content)
-              print("Sukses Simpan File")
-            except Exception as e:
-              print(f"Gagal Simpan File di BG: {str(e)}")
+          # async def _save_file_bg():
+          #   try:
+          #     # Write Filenya
+          #     loop = asyncio.get_event_loop()
+          #     await loop.run_in_executor(
+          #       FILE_IO_EXECUTOR,
+          #       lambda: open(file_location, 'wb').write(content)
+          #     )
+          #     # async with aiofiles.open(file_location, 'wb') as f:
+          #     #   await f.write(content)
+          #     print("Sukses Simpan File")
+          #   except Exception as e:
+          #     print(f"Gagal Simpan File di BG: {str(e)}")
 
-          # Pakai asyncio utk run di bg
-          asyncio.create_task(_save_file_bg())
+          # # Pakai asyncio utk run di bg
+          # asyncio.create_task(_save_file_bg())
+
+          background_task.add_task(save_upload_file, data['foto_checkout'], file_location)
 
           return {
             "status": "ok",

@@ -4,7 +4,7 @@ import os
 from typing import Optional
 import uuid
 import aiomysql
-from fastapi import APIRouter, Query, Depends, File, Form, Request, HTTPException, Security, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, Depends, File, Form, Request, HTTPException, Security, UploadFile, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from koneksi import get_db
 from fastapi_jwt import (
@@ -20,6 +20,8 @@ import time
 import hashlib
 from utils.fn_conv_str import serialize_data
 from api.admin.get_data import absensi_connection
+from api.users.absensi import save_upload_file
+import shutil
 
 app = APIRouter(
   prefix="/absen_tidakhadir"
@@ -58,9 +60,11 @@ async def get_data(
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
 
+
 @app.post('/store_data')
 async def store_data(
   request: Request,
+  background_tasks: BackgroundTasks,
   user: JwtAuthorizationCredentials = Security(access_security)
 ):
   try:
@@ -78,9 +82,10 @@ async def store_data(
             filename = f"{uuid.uuid4()}.png"
             file_location = os.path.join(FOTO_TIDAK_HADIR, filename)
 
-            content = await data['foto_lampiran'].read()
-            with open(file_location, "wb") as f:
-              f.write(content)
+            # content = await data['foto_lampiran'].read()
+            # with open(file_location, "wb") as f:
+            #   f.write(content)
+            background_tasks.add_task(save_upload_file, data['foto_lampiran'], file_location)
 
           q1 = """
             INSERT INTO pengajuan_absen(id_karyawan, tipe_pengajuan, tanggal_mulai, tanggal_akhir, foto_lampiran, keterangan)

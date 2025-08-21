@@ -47,6 +47,10 @@ async def login(
           await cursor.execute(query, data['username'])
           items = await cursor.fetchone()
 
+          if "is_admin" in data:
+            if data['is_admin'] == 1 and items['roles'] not in ["admin", "owner"]:
+              raise HTTPException(status_code=401, detail="Akses Anda Dibatasi")
+
           #Jika g ad data
           if not items:
             raise HTTPException(status_code=404, detail="User Not Found")
