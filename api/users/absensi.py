@@ -84,7 +84,13 @@ async def get_data(
             # Return dalam bentuk dict
             items = await cursor.fetchone()
           else:
-            q1 = "SELECT * FROM absensi WHERE MONTH(tanggal_absen) = %s and YEAR(tanggal_absen) = %s and id_karyawan = %s ORDER BY DATE(tanggal_absen) ASC"
+            q1 = """
+              SELECT a.*, pa.keterangan, pa.foto_lampiran FROM absensi a
+              LEFT JOIN pengajuan_absen pa 
+                ON a.id_karyawan = pa.id_karyawan
+                  AND DATE(a.tanggal_absen) BETWEEN pa.tanggal_mulai AND pa.tanggal_akhir
+              WHERE MONTH(a.tanggal_absen) = %s and YEAR(a.tanggal_absen) = %s and a.id_karyawan = %s ORDER BY DATE(a.tanggal_absen) ASC
+            """
             await cursor.execute(q1, (month, year, user['id_karyawan']) )
 
             # Return dalam bentuk list
@@ -113,16 +119,24 @@ async def get_data_checkin(
         try:
           await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
 
-          q1 = "SELECT 1 FROM absensi WHERE id_karyawan = %s and DATE(check_in) = DATE(CURRENT_TIMESTAMP())"
-          await cursor.execute(q1, user['id_karyawan'])
-
-          items = await cursor.fetchone()
+          # Returnnya Integer
+          q1 = """
+            SELECT 
+              EXISTS(
+                SELECT 1 FROM absensi a WHERE a.id_karyawan = %s and DATE(a.check_in) = CURDATE()
+              ) AS has_checkin,
+              EXISTS(
+                SELECT 1 FROM pengajuan_absen pa WHERE pa.id_karyawan = %s 
+                  AND CURDATE() BETWEEN pa.tanggal_mulai AND pa.tanggal_akhir
+              ) AS in_pengajuan
+          """
+          await cursor.execute(q1, (user['id_karyawan'], user['id_karyawan']))
+          items1 = await cursor.fetchone()
 
           # Jika Data ada, tolak krn udh checkin hari ini
-          if items:
+          if bool(items1['has_checkin']) or bool(items1['in_pengajuan']):
             return JSONResponse(content={"status": "error", "message": f"Anda Sudah Checkin"}, status_code=403)
           
-
           return JSONResponse(content={"status": "ok", "message": f"Belum Ada Checkin"}, status_code=200)
         
 
@@ -149,13 +163,26 @@ async def get_data_checkout(
         try:
           await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
 
-          q1 = "SELECT 1 FROM absensi WHERE id_karyawan = %s and DATE(check_out) = DATE(CURRENT_TIMESTAMP())"
-          await cursor.execute(q1, user['id_karyawan'])
+          # q1 = "SELECT 1 FROM absensi WHERE id_karyawan = %s and DATE(check_out) = DATE(CURRENT_TIMESTAMP())"
+          # await cursor.execute(q1, user['id_karyawan'])
+
+          # Returnnya Integer
+          q1 = """
+            SELECT 
+              EXISTS(
+                SELECT 1 FROM absensi a WHERE a.id_karyawan = %s AND DATE(a.check_out) = CURDATE()
+              ) AS has_check_out,
+              EXISTS(
+                SELECT 1 FROM pengajuan_absen pa WHERE pa.id_karyawan = %s 
+                AND CURDATE() BETWEEN pa.tanggal_mulai and pa.tanggal_akhir
+              ) AS has_pengajuan
+          """
+          await cursor.execute(q1, (user['id_karyawan'], user['id_karyawan']))
 
           items = await cursor.fetchone()
 
           # Jika Data ada, tolak krn udh checkout hari ini
-          if items:
+          if bool(items['has_check_out']) or bool(items['has_pengajuan']):
             return JSONResponse(content={"status": "error", "message": f"Anda Sudah CheckOut"}, status_code=403)
           
           return JSONResponse(content={"status": "ok", "message": f"Belum Ada Checkout"}, status_code=200)
