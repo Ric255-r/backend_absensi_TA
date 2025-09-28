@@ -1,10 +1,5 @@
-import asyncio
-import os
-import ipaddress
-from fastapi import Depends, FastAPI, APIRouter, Request, Security, HTTPException
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi_jwt import JwtAuthorizationCredentials
 from services.login import app as app_karyawan
 from api.admin.regis_data import app as app_regis
 from api.admin.get_data import app as app_get_data
@@ -14,10 +9,8 @@ from api.admin.delete_data import app as app_delete_admin
 from api.users.absensi import app as app_absensi
 from api.users.absen_tidakhadir import app as app_tidakhadir
 from api.users.update_profile import app as app_profile_user
-from jwt_auth import access_security
 
 from koneksi import lifespan
-from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI(lifespan=lifespan)
@@ -41,15 +34,11 @@ main_router.include_router(app_delete_admin)
 main_router.include_router(app_update_admin)
 main_router.include_router(app_profile_user)
 
-#masukkan main router ke fastapi app
+# masukkan main router ke fastapi app
 app.include_router(main_router, prefix="/api")
 
 # bawaan default
 if __name__ == "__main__":
   import uvicorn
 
-  # Cara jalanin dgn Reload
-  # uvicorn main:app --reload --host 192.168.100.11 --port 5500
-  uvicorn.run(app, host="100.101.128.60", port=5500)
-
-  # uvicorn main:app --host 0.0.0.0 --port 5500 --workers 4
+  uvicorn.run(app, host="0.0.0.0", port=5500)
