@@ -187,23 +187,41 @@ async def update_pengajuan(request: Request):
             )
             existing_dates = {row["tgl"] for row in await cursor.fetchall()}
 
-            # Prepare new rows for dates that DON'T exist yet
+            # Prepare new rows to insert or update
             rows_to_insert = []
+            rows_to_update = []
+
             for d in days_in_range:
               if d in existing_dates:
-                continue  # Skip if record already exists
-              rows_to_insert.append(
-                (
-                  data["id_karyawan"],
-                  d.strftime("%Y-%m-%d"),
-                  d.strftime("%Y-%m-%d"),
-                  0.0,
-                  0.0,
-                  "no-foto",
-                  data["tipe_pengajuan"],
-                  data["status"],
+                # continue
+                rows_to_update.append(
+                  (data["status"], d.strftime("%Y-%m-%d"), data["id_karyawan"]),
                 )
-              )
+              else:
+                rows_to_insert.append(
+                  (
+                    data["id_karyawan"],
+                    d.strftime("%Y-%m-%d"),
+                    d.strftime("%Y-%m-%d"),
+                    0.0,
+                    0.0,
+                    "no-foto",
+                    data["tipe_pengajuan"],
+                    data["status"],
+                  )
+                )
+
+            if rows_to_update:
+              q_update_status = """
+                UPDATE absensi 
+                  SET 
+                    status_absen = %s 
+                  WHERE 
+                    DATE(tanggal_absen) = %s
+                  AND
+                    id_karyawan = %s
+                """
+              await cursor.executemany(q_update_status, rows_to_update)
 
             # If there are new rows to insert, execute the batch insert
             if rows_to_insert:
