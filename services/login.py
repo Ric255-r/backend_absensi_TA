@@ -44,34 +44,37 @@ async def login(request: Request):
           if not items:
             raise HTTPException(status_code=404, detail="User Not Found")
 
-          # Binding Device Id
-          stored_device_id = items["device_id"]
-          is_first_time_bind = False
-
-          if not stored_device_id:
-            # Masukkan Ke Hasil Response dari payload
-            items["device_id"] = payload["device_id"]
-            is_first_time_bind = True
-
-          elif payload["device_id"] != stored_device_id:
-            raise HTTPException(
-              status_code=401, detail="Device Anda Berbeda. Akses Dibatasi"
-            )
-
           # ambil passwd
           stored_pass = items["passwd"].strip()
+          is_first_time_bind = None
 
           # bandingkan md5 dari form dengan passwd md5 yg udh terstore
           if req_passwd.hexdigest() != stored_pass:
             raise HTTPException(status_code=401, detail="Password Salah")
 
-          # Mainkan Untuk Di Lempar Ke Token
-          items["is_first_time_bind"] = is_first_time_bind
+          # Jika Login Bukan Melalui Website (tanpa payload admin), Bind Device Id
+          if "is_admin" not in payload:
+            # Binding Device Id
+            stored_device_id = items["device_id"]
+            is_first_time_bind = False
+
+            if not stored_device_id:
+              # Masukkan Ke Hasil Response dari payload
+              items["device_id"] = payload["device_id"]
+              is_first_time_bind = True
+
+            elif payload["device_id"] != stored_device_id:
+              raise HTTPException(
+                status_code=401, detail="Device Anda Berbeda. Akses Dibatasi"
+              )
+
+            # Mainkan Untuk Di Lempar Ke Token
+            items["is_first_time_bind"] = is_first_time_bind
 
           access_token = access_security.create_access_token(serialize_data(items))
           refresh_token = refresh_security.create_refresh_token(serialize_data(items))
 
-          # HANYA commit jika ini BUKAN binding pertama
+          # HANYA commit jika ini BUKAN binding pertama & Admin
           if not is_first_time_bind:
             query2 = (
               "UPDATE akun SET last_login = CURRENT_TIMESTAMP() WHERE username = %s"
@@ -108,7 +111,9 @@ async def login(request: Request):
 
 
 @app.get("/user")
-async def user(user: JwtAuthorizationCredentials = Security(access_security)):
+async def user(
+  is_admin: bool = False, user: JwtAuthorizationCredentials = Security(access_security)
+):
   try:
     pool = await get_db()
 
@@ -121,48 +126,46 @@ async def user(user: JwtAuthorizationCredentials = Security(access_security)):
 
           # Jika g ad data
           if not user:
-            raise HTTPException(status_code=404, detail="User Not Found")
+            raise HTTPException(status_code=401, detail="Invalid token payload")
 
           q1 = "SELECT a.*, k.nama_karyawan, k.foto_profile FROM akun a INNER JOIN karyawan k ON a.id_karyawan = k.id_karyawan WHERE a.id_karyawan = %s"
           await cursor.execute(q1, (user["id_karyawan"],))
-          # Return dalam bentuk list
-          items = await cursor.fetchone()
+
+          items = await cursor.fetchone()  # Data dari Database
 
           if not items:
             raise HTTPException(status_code=404, detail="User Not Found in DB")
 
-          # --- ✨ VALIDASI DEVICE BINDING SAAT STARTUP ✨ ---
-          # Ambil device_id dari token yang dikirim
-          device_id_from_token = user["device_id"]
+          if not is_admin:
+            device_id_from_token = user["device_id"]
+            device_id_from_db = items.get("device_id")
+            # Bandingkan!
+            if device_id_from_db != device_id_from_token:
+              # DB (A002) tidak cocok dengan Token (A001).
+              # Paksa user (karyawan) login ulang.
+              raise HTTPException(
+                status_code=401, detail="Device binding berubah. Silakan login kembali."
+              )
 
-          # Ambil device_id dari database
-          device_id_from_db = items.get("device_id")
+          return items
 
-          # Bandingkan!
-          if device_id_from_db != device_id_from_token:
-            # Ini adalah skenario Anda:
-            # DB (A002) tidak cocok dengan Token (A001).
-            # Paksa user login ulang.
-            raise HTTPException(
-              status_code=401, detail="Device binding berubah. Silakan login kembali."
-            )
-          # --- SELESAI VALIDASI ---
-
-          return items  # Jika cocok, kembalikan data user
         except aiomysqlerror as e:
           return JSONResponse(
             content={"status": "error", "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
+          # Ini akan menangkap error 401 dari atas
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": "error", "message": e.detail},
             status_code=e.status_code,
           )
 
   except Exception as e:
+    detail = getattr(e, "detail", str(e))
+    status_code = getattr(e, "status_code", 401)
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": "error", "message": detail}, status_code=status_code
     )
 
 
