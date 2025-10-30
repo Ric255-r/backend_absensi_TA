@@ -47,8 +47,8 @@ def get_foto_checkout(filename: str):
 
 # Ini Adalah Lokasi saya, Untuk Uji Coba agar absen saya diapprove
 # Maka saya akan mengubah lokasi objek penelitian kepada lokasi saya saat ini
-LATITUDE_BENGKOM = -0.0865375
-LONGITUDE_BENGKOM = 109.3511014
+LATITUDE_BENGKOM = -0.0317901
+LONGITUDE_BENGKOM = 109.3429086
 
 
 # # Original Lokasi Bengkel Teknologi Indonesia
