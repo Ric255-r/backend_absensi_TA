@@ -23,6 +23,7 @@ from utils.fn_conv_str import serialize_data
 import os
 from api.admin.get_data import absensi_connection
 from concurrent.futures import ThreadPoolExecutor
+from utils.fn_log_users import logger as logger_user
 
 # Create a dedicated thread pool for file operations
 FILE_IO_EXECUTOR = ThreadPoolExecutor(max_workers=6)  # Adjust based on your needs
@@ -67,6 +68,7 @@ async def get_data(
   year: Optional[str] = Query(None),
   user: JwtAuthorizationCredentials = Security(access_security),
 ):
+  logger_user.info(f"Karyawan: {user['nama_karyawan']} Mengakses Menu Utama")
   try:
     pool = await get_db()
 
@@ -450,6 +452,10 @@ async def absen_hadir(
             save_upload_file, data["foto_checkin"], file_location
           )
 
+          logger_user.info(
+            f"Karyawan: {user['nama_karyawan']} Mengajukan Presensi Check In"
+          )
+
           return {"status": "ok", "message": "Sukses Simpan Data"}
 
         except aiomysqlerror as e:
@@ -690,6 +696,10 @@ async def check_out(
 
           background_task.add_task(
             save_upload_file, data["foto_checkout"], file_location
+          )
+
+          logger_user.info(
+            f"Karyawan: {user['nama_karyawan']} Mengajukan Presensi Check Out"
           )
 
           return {"status": "ok", "message": "Sukses Update Data Absensi"}
