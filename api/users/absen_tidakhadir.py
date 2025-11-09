@@ -141,25 +141,75 @@ async def store_data(
           await cursor.execute(q1, q1_values)
           await conn.commit()
 
-          for ws_con in absensi_connection:
-            await ws_con.send_text(
-              json.dumps({"message": f"ada pengajuan {data['tipe_pengajuan']} baru"})
-            )
+          await broadcast_pengajuan_created(
+            {
+              "id_pengajuan": cursor.lastrowid,
+              "id_karyawan": user["id_karyawan"],
+              "tipe_pengajuan": data["tipe_pengajuan"],
+              "tanggal_mulai": data["tanggal_mulai"],
+              "tanggal_akhir": data["tanggal_akhir"],
+              "foto_lampiran": filename if "foto_lampiran" in data else "",
+              "keterangan": data["keterangan"],
+            },
+            pool,
+          )
 
           return {"Sukses": "Pengajuan di Minta"}
 
         except aiomysqlerror as e:
+          await conn.rollback()
+          print("Database Error", str(e))
           return JSONResponse(
             content={"status": "error", "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
+          await conn.rollback()
+          print("HTTP Error Error", str(e))
           return JSONResponse(
             content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
 
   except Exception as e:
+    print("Koneksi Error", str(e))
     return JSONResponse(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
+
+async def broadcast_pengajuan_created(pa_row: dict, pool: aiomysql.Pool):
+  # effective_date = str(pa_row["tanggal_mulai"])  # "YYYY-MM-DD"
+  data_karyawan = {}
+
+  async with pool.acquire() as conn:
+    async with conn.cursor(aiomysql.DictCursor) as cursor:
+      await cursor.execute(
+        "SELECT * FROM karyawan WHERE id_karyawan = %s", (pa_row["id_karyawan"],)
+      )
+      data_karyawan = await cursor.fetchone()
+
+  msg = {
+    "event": "pengajuan_created",
+    "message": f"{data_karyawan['nama_karyawan']} membuat pengajuan {pa_row['tipe_pengajuan']}",
+    "effective_date": str(pa_row["tanggal_mulai"]),  # <-- kunci
+    "payload": {
+      "id_pengajuan": pa_row["id_pengajuan"],
+      "nama_karyawan": data_karyawan["nama_karyawan"],
+      "tipe_pengajuan": pa_row["tipe_pengajuan"],
+      "tanggal_mulai": str(pa_row["tanggal_mulai"]),
+      "tanggal_akhir": str(pa_row["tanggal_akhir"]),
+      "lampiran": pa_row.get("lampiran", "") or "",
+      "keterangan": pa_row.get("keterangan", "") or "",
+      "status": "pending",
+    },
+  }
+
+  dead = []
+  for ws in absensi_connection:
+    try:
+      await ws.send_text(json.dumps(msg))
+    except Exception:
+      dead.append(ws)
+  for ws in dead:
+    absensi_connection.remove(ws)
