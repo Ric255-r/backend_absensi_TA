@@ -44,6 +44,13 @@ async def update_status_absensi(
           if is_bulk:
             # Jika Massive Update
             for item in data["updated_bulk_data"]:
+              if item["status_absen"] == "rejected":
+                log_message = (
+                  f"Karyawan [{item['id_karyawan']}] Sudah Di Reject. Skipped From Bulk"
+                )
+                logger.info(log_message)
+                continue
+
               q1 = f"""
                 UPDATE absensi SET status_absen = %s {", alasan_penolakan = %s" if "alasan_penolakan" in item else ""} 
                 WHERE id_karyawan = %s and id_absensi = %s
