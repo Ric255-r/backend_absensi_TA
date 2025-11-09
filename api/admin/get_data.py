@@ -1,47 +1,34 @@
-import asyncio
-from datetime import datetime
-import json
 import os
 from typing import Optional
-import uuid
 import aiomysql
-from fastapi import APIRouter, Query, Depends, File, Form, Request, HTTPException, Security, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+  APIRouter,
+  Query,
+  Request,
+  HTTPException,
+  WebSocket,
+  WebSocketDisconnect,
+)
 from fastapi.responses import JSONResponse, FileResponse
 from koneksi import get_db
-from fastapi_jwt import (
-  JwtAccessBearerCookie,
-  JwtAuthorizationCredentials,
-  JwtRefreshBearer
-)
-import pandas as pd
 from aiomysql import Error as aiomysqlerror
-from jwt_auth import access_security, refresh_security
-import calendar
-import time
-import hashlib
-from utils.fn_conv_str import serialize_data
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell import MergedCell
-from openpyxl.workbook.protection import WorkbookProtection
 from collections import defaultdict
-from aiomysql import Error as aiomysqlerror
 import win32com.client
 from pywintypes import com_error
 from utils.fn_log import logger
 
-app = APIRouter(
-  prefix="/admin"
-)
+app = APIRouter(prefix="/admin")
 
 # Ini dari User ke Admin
 absensi_connection = []
 
-@app.websocket('/ws-absensi')
-async def ws_absen_user(
-  websocket: WebSocket
-):
+
+@app.websocket("/ws-absensi")
+async def ws_absen_user(websocket: WebSocket):
   await websocket.accept()
   absensi_connection.append(websocket)
 
@@ -51,22 +38,22 @@ async def ws_absen_user(
   except WebSocketDisconnect:
     print("WS Disconnect")
     absensi_connection.remove(websocket)
+
+
 # End Dari user Ke admin
 
 
-@app.get('/get_absensi')
-async def get_absensi(
-  request: Request,
-  tgl: Optional[str] = Query(None)
-):
+@app.get("/get_absensi")
+async def get_absensi(request: Request, tgl: Optional[str] = Query(None)):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           kondisi = ""
           params = []
@@ -89,25 +76,33 @@ async def get_absensi(
           return items
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
-      
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
-@app.get('/get_data_dashboard')
-async def get_data_dashboard(
-  request: Request
-):
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
+@app.get("/get_data_dashboard")
+async def get_data_dashboard(request: Request):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           # Absen pending
           q1 = """
@@ -132,43 +127,47 @@ async def get_data_dashboard(
           items3 = await cursor.fetchone()
 
           # This is the log message you wanted
-          log_message = (
-              f"ADMIN MENGAKSES DASHBOARD "
-          )
+          log_message = "ADMIN MENGAKSES DASHBOARD "
           logger.info(log_message)
           # --- End of logging ---
 
           return {
             "total_karyawan": items2,
             "absen_pending": items,
-            "data_ga_hadir": items3
+            "data_ga_hadir": items3,
           }
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
 
-      
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
-  
-@app.get('/get_pengajuan')
-async def get_pengajuan(
-  request: Request,
-  tgl: Optional[str] = Query(None)
-):
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
+@app.get("/get_pengajuan")
+async def get_pengajuan(request: Request, tgl: Optional[str] = Query(None)):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
           kondisi = ""
           params = []
+
           if tgl:
             kondisi = "WHERE DATE(pa.tanggal_mulai) = %s"
             params.append(tgl)
@@ -186,17 +185,23 @@ async def get_pengajuan(
           return items
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
 
-      
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
 
 
-@app.get('/get_karyawan')
+@app.get("/get_karyawan")
 async def get_karyawan(
   request: Request,
   id_karyawan: Optional[str] = Query(None),
@@ -207,7 +212,9 @@ async def get_karyawan(
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           # Start building the base query
           query = """
@@ -226,31 +233,40 @@ async def get_karyawan(
           # Execute the query with the parameters
           await cursor.execute(query, tuple(params))  # Using tuple for params
 
-          items = await cursor.fetchall() if not id_karyawan else await cursor.fetchone()
+          items = (
+            await cursor.fetchall() if not id_karyawan else await cursor.fetchone()
+          )
 
-          return items 
+          return items
 
         except aiomysql.MySQLError as e:
-            return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-            return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
 
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
 
 
-@app.get('/get_exists_akun')
-async def get_exists_akun(
-  username: str
-):
+@app.get("/get_exists_akun")
+async def get_exists_akun(username: str):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           q1 = """
             SELECT * FROM akun WHERE username = %s
@@ -261,26 +277,33 @@ async def get_exists_akun(
           return items if items else []
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
 
-      
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
 
-@app.get('/get_akun')
-async def get_akun(
-  request: Request
-):
+
+@app.get("/get_akun")
+async def get_akun(request: Request):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           q1 = """
             SELECT * FROM akun
@@ -291,26 +314,33 @@ async def get_akun(
           return items
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
 
-      
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
-@app.get('/get_departemen')
-async def get_departemen(
-  request: Request
-):
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
+@app.get("/get_departemen")
+async def get_departemen(request: Request):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           q1 = """
             SELECT * FROM departemen
@@ -321,26 +351,33 @@ async def get_departemen(
           return items
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
 
-      
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
-@app.get('/get_konfigurasi')
-async def get_konfigurasi(
-  request: Request
-):
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
+@app.get("/get_konfigurasi")
+async def get_konfigurasi(request: Request):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           q1 = """
             SELECT * FROM konfigurasi_aplikasi
@@ -351,25 +388,33 @@ async def get_konfigurasi(
           return items
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
-      
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
-@app.get('/get_jadwal')
-async def get_jadwal(
-  request: Request
-):
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
+@app.get("/get_jadwal")
+async def get_jadwal(request: Request):
   try:
     pool = await get_db()
 
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
-
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           q1 = """
             SELECT * FROM jadwal_kerja
@@ -380,17 +425,26 @@ async def get_jadwal(
           return items
 
         except aiomysqlerror as e:
-          return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
         except HTTPException as e:
-          return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
-      
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
   except Exception as e:
-    return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
-  
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
 def excel_to_pdf(excel_path, pdf_path):
   excel = win32com.client.Dispatch("Excel.Application")
-  excel.Visible = False #Buat Excel Hidden
-  excel.DisplayAlerts = False #Lewati Alert
+  excel.Visible = False  # Buat Excel Hidden
+  excel.DisplayAlerts = False  # Lewati Alert
 
   try:
     print(f"Converting '{excel_path}' to PDF...")
@@ -401,64 +455,75 @@ def excel_to_pdf(excel_path, pdf_path):
     # 1. Set print area to only used cells
     used_range = ws.UsedRange
     ws.PageSetup.PrintArea = used_range.Address
-    
+
     # 2. Fit to one page wide and tall
     ws.PageSetup.FitToPagesWide = 1
     ws.PageSetup.FitToPagesTall = 1
-    
+
     # 3. Prevent row/column splitting
     ws.PageSetup.FitToPagesTall = False  # Allow multiple pages if needed
     ws.PageSetup.Zoom = False  # Disable zoom to enforce FitToPages
-    
+
     # 4. Set margins (optional, adjust as needed)
     ws.PageSetup.LeftMargin = 20
     ws.PageSetup.RightMargin = 20
     ws.PageSetup.TopMargin = 20
     ws.PageSetup.BottomMargin = 20
-    
+
     # 5. Center on page
     ws.PageSetup.CenterHorizontally = True
     ws.PageSetup.CenterVertically = True
-    
+
     # 6. Set paper size (A4)
     ws.PageSetup.PaperSize = 9  # 9 = xlPaperA4
-    
+
     # 7. Set orientation (Auto: Excel will decide based on content)
     if used_range.Columns.Count > 10:  # If many columns, use landscape
-        ws.PageSetup.Orientation = 2  # 2 = xlLandscape
+      ws.PageSetup.Orientation = 2  # 2 = xlLandscape
     else:
-        ws.PageSetup.Orientation = 1  # 1 = xlPortrait
+      ws.PageSetup.Orientation = 1  # 1 = xlPortrait
 
     # --- Export to PDF ---
     wb.ActiveSheet.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
     print("Conversion successful!")
-        
+
   except com_error as e:
     print(f"Conversion failed: {e}")
   finally:
-    if 'wb' in locals() and wb:
+    if "wb" in locals() and wb:
       wb.Close(SaveChanges=False)
     if excel:
       excel.Quit()
-  
-def formatStrDate(
-  params: str
-):
+
+
+def formatStrDate(params: str):
   tgl = params.split("-")
   formatted_tgl = tgl[2] + "-" + tgl[1] + "-" + tgl[0]
   return formatted_tgl
 
+
 # --- Helper Function for Indonesian Date Formatting ---
 def format_indonesian_date(date_obj):
-    """Formats a date object into 'Nama Hari, DD Nama Bulan YYYY' in Indonesian."""
-    days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
-    months = [
-      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-    ]
-    day_name = days[date_obj.weekday()]
-    month_name = months[date_obj.month - 1]
-    return f"{day_name}, {date_obj.day} {month_name} {date_obj.year}"
+  """Formats a date object into 'Nama Hari, DD Nama Bulan YYYY' in Indonesian."""
+  days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+  months = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ]
+  day_name = days[date_obj.weekday()]
+  month_name = months[date_obj.month - 1]
+  return f"{day_name}, {date_obj.day} {month_name} {date_obj.year}"
+
 
 def bulan_indo(month):
   bulan = ""
@@ -490,14 +555,11 @@ def bulan_indo(month):
   return bulan
 
 
-@app.get('/export_excel')
+@app.get("/export_excel")
 async def exportExcel(
-  start_date: Optional[str] = Query(None),
-  end_date: Optional[str] = Query(None)
+  start_date: Optional[str] = Query(None), end_date: Optional[str] = Query(None)
 ):
-  log_message = (
-    f"PROSES GENERATE EXCEL REKAPITULASI"
-  )
+  log_message = "PROSES GENERATE EXCEL REKAPITULASI"
   logger.info(log_message)
 
   try:
@@ -505,7 +567,9 @@ async def exportExcel(
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
         try:
-          await cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
 
           # --- 1. Determine Date Range and SQL Condition ---
           kondisi = ""
@@ -523,12 +587,14 @@ async def exportExcel(
 
             kondisi = "WHERE MONTH(a.tanggal_absen) = MONTH(%s)"
             params.append(start_date)
-          else: # Default to current month
-            await cursor.execute("SELECT CONCAT(YEAR(CURDATE()), '-', LPAD(MONTH(CURDATE()), 2, '0'), '-01') as first_day, LAST_DAY(CURDATE()) as last_day, MONTHNAME(CURDATE()) as month, YEAR(CURDATE()) as year")
+          else:  # Default to current month
+            await cursor.execute(
+              "SELECT CONCAT(YEAR(CURDATE()), '-', LPAD(MONTH(CURDATE()), 2, '0'), '-01') as first_day, LAST_DAY(CURDATE()) as last_day, MONTHNAME(CURDATE()) as month, YEAR(CURDATE()) as year"
+            )
             date_info = await cursor.fetchone()
             periode_laporan = f"Bulan {date_info['month']} {date_info['year']}"
             kondisi = "WHERE MONTH(a.tanggal_absen) = MONTH(CURDATE()) AND YEAR(a.tanggal_absen) = YEAR(CURDATE())"
-        
+
           # --- 2. Modify SQL to fetch the date for grouping ---
           # Added 'a.tanggal_absen' for grouping and ordered by date
           q1 = f"""
@@ -553,14 +619,14 @@ async def exportExcel(
           if not all_data:
             return JSONResponse(
               {"message": f"Tidak ada data absensi untuk periode {periode_laporan}"},
-              status_code=404
+              status_code=404,
             )
 
           # --- 3. Group Data by Date using a Dictionary ---
           grouped_data = defaultdict(list)
           for row in all_data:
             # Use the date part of 'tanggal_absen' as the key
-            grouped_data[row['tanggal_absen'].date()].append(row)
+            grouped_data[row["tanggal_absen"].date()].append(row)
 
           # --- 4. Setup Excel Workbook and Main Headers ---
           wb = Workbook()
@@ -568,43 +634,50 @@ async def exportExcel(
           ws.title = "Laporan Absensi"
 
           # Main Title
-          ws.merge_cells('A1:I1')
-          corp_cell = ws['A1']
+          ws.merge_cells("A1:I1")
+          corp_cell = ws["A1"]
           corp_cell.value = "CV BENGKEL TEKNOLOGI DISTRIBUSI"
-          corp_cell.alignment = Alignment(horizontal='center', vertical='center')
+          corp_cell.alignment = Alignment(horizontal="center", vertical="center")
           corp_cell.font = Font(bold=True, size=16)
 
           # Sub Title
-          ws.merge_cells('A2:I2')
-          ket_cell = ws['A2']
+          ws.merge_cells("A2:I2")
+          ket_cell = ws["A2"]
           ket_cell.value = f"LAPORAN ABSENSI PERIODE {periode_laporan}"
-          ket_cell.alignment = Alignment(horizontal='center', vertical='center')
+          ket_cell.alignment = Alignment(horizontal="center", vertical="center")
           ket_cell.font = Font(bold=True, size=14)
-          
+
           # Add a blank row before data starts
-          ws.append([""]) 
+          ws.append([""])
 
           # --- 5. Define Column Headers for the Tables ---
           column_headers = [
-            "No", "Nama Karyawan", "Posisi", "Absen Masuk", "Absen Keluar",
-            "Pengajuan", "Terlambat", "Status Absen", "Alasan Penolakan"
+            "No",
+            "Nama Karyawan",
+            "Posisi",
+            "Absen Masuk",
+            "Absen Keluar",
+            "Pengajuan",
+            "Terlambat",
+            "Status Absen",
+            "Alasan Penolakan",
           ]
-          
+
           # --- 6. Iterate Through Grouped Data and Write to Sheet ---
           # Sort dictionary by date to ensure chronological order
           sorted_dates = sorted(grouped_data.keys())
 
           for date_key in sorted_dates:
             records_for_the_day = grouped_data[date_key]
-            
+
             # a. Add the formatted date header for the group
-            current_row = ws.max_row + 1 # Add space from previous block
-            ws.merge_cells(f'A{current_row}:I{current_row}')
-            date_header_cell = ws[f'A{current_row}']
+            current_row = ws.max_row + 1  # Add space from previous block
+            ws.merge_cells(f"A{current_row}:I{current_row}")
+            date_header_cell = ws[f"A{current_row}"]
             date_header_cell.value = format_indonesian_date(date_key)
             date_header_cell.font = Font(bold=True, size=12)
-            date_header_cell.alignment = Alignment(horizontal='left')
-            
+            date_header_cell.alignment = Alignment(horizontal="left")
+
             # b. Add the table headers for this group
             ws.append(column_headers)
             header_row = ws[ws.max_row]
@@ -612,31 +685,36 @@ async def exportExcel(
               cell.font = Font(bold=True)
               cell.alignment = Alignment(horizontal="center", vertical="center")
               cell.fill = PatternFill(start_color="D3D3D3", fill_type="solid")
-              cell.border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+              cell.border = Border(
+                left=Side(style="thin"),
+                right=Side(style="thin"),
+                top=Side(style="thin"),
+                bottom=Side(style="thin"),
+              )
 
             # c. Add the data rows for this group
             for i, record in enumerate(records_for_the_day, 1):
               # Convert is_telat to a more readable format
-              is_telat_str = "Ya" if record.get('is_telat') == 1 else "Tidak"
-              
+              is_telat_str = "Ya" if record.get("is_telat") == 1 else "Tidak"
+
               # Prepare row data, ensuring None/empty values are handled
               row_data = [
                 i,
-                record.get('nama_karyawan') or "-",
-                record.get('posisi') or "-",
-                record.get('absen_masuk') or "-",
-                record.get('absen_keluar') or "-",
-                record.get('pengajuan') or "-",
+                record.get("nama_karyawan") or "-",
+                record.get("posisi") or "-",
+                record.get("absen_masuk") or "-",
+                record.get("absen_keluar") or "-",
+                record.get("pengajuan") or "-",
                 is_telat_str,
-                record.get('status_absen') or "-",
-                record.get('alasan_penolakan') or "-",
+                record.get("status_absen") or "-",
+                record.get("alasan_penolakan") or "-",
               ]
               ws.append(row_data)
 
             # d. Add a blank row for spacing after each group
             # --- THIS IS THE FIX ---
             # Instead of ws.append([]), append a list with an empty cell.
-            ws.append([""]) # ✅ CORRECTED LINE
+            ws.append([""])  # ✅ CORRECTED LINE
 
           # --- 7. Auto Adjust Column Widths ---
           for col_idx, column in enumerate(ws.columns, 1):
@@ -644,13 +722,13 @@ async def exportExcel(
             max_length = 0
             for cell in column:
               if isinstance(cell, MergedCell):
-                  continue
+                continue
               try:
-                  if len(str(cell.value)) > max_length:
-                      max_length = len(str(cell.value))
+                if len(str(cell.value)) > max_length:
+                  max_length = len(str(cell.value))
               except:
-                  pass
-              
+                pass
+
             # Set a minimum width and add buffer
             adjusted_width = (max_length + 2) * 1.2
             # Special handling for 'No' column
@@ -661,26 +739,28 @@ async def exportExcel(
           # --- 8. Save and Return the File ---
           file_path = "data_absensi_harian.xlsx"
           if os.path.exists(file_path):
-            os.chmod(file_path, 0o644) # Make writable to overwrite
-          
-          wb.save(file_path)
-          os.chmod(file_path, 0o444) # Set back to read-only
+            os.chmod(file_path, 0o644)  # Make writable to overwrite
 
-          log_message = (
-            f"SELESAI GENERATE EXCEL REKAPITULASI"
-          )
+          wb.save(file_path)
+          os.chmod(file_path, 0o444)  # Set back to read-only
+
+          log_message = "SELESAI GENERATE EXCEL REKAPITULASI"
           logger.info(log_message)
 
           return FileResponse(
             os.path.abspath(file_path),
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            filename="laporan_absensi_harian.xlsx"
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="laporan_absensi_harian.xlsx",
           )
 
         except aiomysql.Error as e:
           return JSONResponse({"Error": f"Database Error: {str(e)}"}, status_code=500)
         except Exception as e:
-          return JSONResponse({"Error": f"An unexpected error occurred: {str(e)}"}, status_code=500)
+          return JSONResponse(
+            {"Error": f"An unexpected error occurred: {str(e)}"}, status_code=500
+          )
 
   except Exception as e:
-    return JSONResponse({"Error": f"Failed to connect to the database: {str(e)}"}, status_code=500)
+    return JSONResponse(
+      {"Error": f"Failed to connect to the database: {str(e)}"}, status_code=500
+    )
