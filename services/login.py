@@ -30,7 +30,8 @@ async def login(request: Request):
           req_passwd = hashlib.md5(str(payload["passwd"]).encode())
 
           query = """
-            SELECT a.* FROM akun a
+            SELECT a.*, k.nama_karyawan FROM akun a
+            INNER JOIN karyawan k ON a.id_karyawan = k.id_karyawan
             WHERE a.username = %s
           """
           await cursor.execute(query, payload["username"])
