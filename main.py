@@ -9,6 +9,7 @@ from api.admin.delete_data import app as app_delete_admin
 from api.users.absensi import app as app_absensi
 from api.users.absen_tidakhadir import app as app_tidakhadir
 from api.users.update_profile import app as app_profile_user
+from services.seeder import app as app_seeder
 
 from koneksi import lifespan
 
@@ -33,6 +34,7 @@ main_router.include_router(app_update_pengajuan)
 main_router.include_router(app_delete_admin)
 main_router.include_router(app_update_admin)
 main_router.include_router(app_profile_user)
+main_router.include_router(app_seeder)
 
 # masukkan main router ke fastapi app
 app.include_router(main_router, prefix="/api")
