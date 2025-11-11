@@ -37,13 +37,18 @@ async def login(request: Request):
           await cursor.execute(query, payload["username"])
           items = await cursor.fetchone()
 
+          # Jika g ad record
+          if not items:
+            raise HTTPException(status_code=404, detail="User Not Found")
+
           if "is_admin" in payload:
             if payload["is_admin"] == 1 and items["roles"] not in ["admin", "owner"]:
               raise HTTPException(status_code=401, detail="Akses Anda Dibatasi")
 
-          # Jika g ad payload
-          if not items:
-            raise HTTPException(status_code=404, detail="User Not Found")
+          if items["status"] == "nonaktif":
+            raise HTTPException(
+              status_code=401, detail="User Tidak Aktif. Ajukan Ke Admin"
+            )
 
           # ambil passwd
           stored_pass = items["passwd"].strip()

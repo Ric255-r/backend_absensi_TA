@@ -362,7 +362,7 @@ async def generate_dummy_accounts():
     # Current timestamp for last_login
     current_timestamp = "2025-01-15 00:00:00"
 
-    # Device ID
+    # Device ID. Hp Ak Vivo
     device_id = "eabb6932c16dd71c"
 
     # Status: all active
