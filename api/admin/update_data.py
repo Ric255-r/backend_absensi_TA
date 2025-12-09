@@ -83,7 +83,7 @@ async def update_akun(request: Request):
             passwd.hexdigest(),
             data["roles"],
             data["id_karyawan"],
-            data["status"],
+            "aktif" if bool(data["status"]) else "nonaktif",
             data["username"],
           )
           await cursor.execute(q1, q1_values)
@@ -190,6 +190,45 @@ async def update_jadwal(id_jadwal: str, request: Request):
           await conn.commit()
 
           return {"status": "ok", "message": "Sukses Simpan Data"}
+
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
+@app.put("/unbind_device/{username}")
+async def unbind_device(username: str):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          # 1. Start Transaction
+          await conn.begin()
+
+          q1 = """
+            UPDATE akun SET device_id = NULL WHERE username = %s
+          """
+          await cursor.execute(q1, username)
+          # 3. Klo Sukses, dia bkl save ke db
+          await conn.commit()
+
+          return {"status": "ok", "message": "Sukses Unbind Device Data"}
 
         except aiomysqlerror as e:
           await conn.rollback()
