@@ -30,7 +30,8 @@ async def login(request: Request):
           req_passwd = hashlib.md5(str(payload["passwd"]).encode())
 
           query = """
-            SELECT a.*, k.nama_karyawan FROM akun a
+            SELECT a.*, k.nama_karyawan, k.status AS status_karyawan 
+            FROM akun a
             INNER JOIN karyawan k ON a.id_karyawan = k.id_karyawan
             WHERE a.username = %s
           """
@@ -47,7 +48,13 @@ async def login(request: Request):
 
           if items["status"] == "nonaktif":
             raise HTTPException(
-              status_code=401, detail="User Tidak Aktif. Ajukan Ke Admin"
+              status_code=401, detail="Akun Anda Dinonaktifkan. Hubungi Admin."
+            )
+
+          # Cek 2: Apakah status kepegawaian sudah tidak aktif? Misalkan Resign
+          if items["status_karyawan"] == "nonaktif":
+            raise HTTPException(
+              status_code=401, detail="Status Karyawan Tidak Aktif. Akses Ditolak."
             )
 
           # ambil passwd
