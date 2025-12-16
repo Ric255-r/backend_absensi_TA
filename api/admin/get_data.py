@@ -93,7 +93,7 @@ async def get_absensi(request: Request, tgl: Optional[str] = Query(None)):
 
 
 @app.get("/get_data_dashboard")
-async def get_data_dashboard(request: Request):
+async def get_data_dashboard(request: Request, tgl: Optional[str] = Query(None)):
   try:
     pool = await get_db()
 
@@ -104,47 +104,102 @@ async def get_data_dashboard(request: Request):
             "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
           )
 
-          # Absen pending
-          q1 = """
-            SELECT COUNT(*) as pending FROM absensi WHERE status_absen = "pending" 
-          """
-          await cursor.execute(q1)
-          items = await cursor.fetchone()
+          # Kalau tgl tidak dikirim, pakai hari ini
+          # tgl format: YYYY-MM-DD
+          date_filter = "DATE(CURRENT_TIMESTAMP())"
+          params = []
+          if tgl:
+            date_filter = "%s"
+            params = [tgl]
 
-          # Total Karyawan
-          q2 = """
-            SELECT COUNT(*) as karyawan FROM karyawan WHERE status = "aktif" 
+          # 1) Total karyawan aktif (count + list)
+          q_karyawan_count = """
+            SELECT COUNT(*) as karyawan
+            FROM karyawan
+            WHERE status = 'aktif'
           """
-          await cursor.execute(q2)
-          items2 = await cursor.fetchone()
+          await cursor.execute(q_karyawan_count)
+          total_karyawan = await cursor.fetchone()
 
-          # Yang Ga masuk
-          q3 = """
-            SELECT COUNT(*) as ga_hadir FROM absensi WHERE pengajuan IN ('cuti', 'sakit', 'izin') 
-            AND DATE(tanggal_absen) = DATE(CURRENT_TIMESTAMP())
+          q_karyawan_list = """
+            SELECT k.*, d.nama_departemen
+            FROM karyawan k
+            INNER JOIN departemen d ON k.id_departemen = d.id_departemen
+            WHERE k.status = 'aktif'
+            ORDER BY nama_karyawan ASC
           """
-          await cursor.execute(q3)
-          items3 = await cursor.fetchone()
+          await cursor.execute(q_karyawan_list)
+          total_karyawan_list = await cursor.fetchall()
 
-          # This is the log message you wanted
-          log_message = "ADMIN MENGAKSES DASHBOARD "
-          logger.info(log_message)
-          # --- End of logging ---
+          # 2) Presensi pending (supaya konsisten, pakai filter tanggal juga)
+          q_pending_count = f"""
+            SELECT COUNT(*) as pending
+            FROM absensi
+            WHERE status_absen = 'pending'
+              AND DATE(tanggal_absen) = {date_filter}
+          """
+          await cursor.execute(q_pending_count, params)
+          absen_pending = await cursor.fetchone()
+
+          q_pending_list = f"""
+            SELECT
+              a.id_absensi as id,
+              a.id_karyawan,
+              k.*,
+              a.tanggal_absen, a.check_in, a.check_out, a.pengajuan, a.status_absen
+            FROM absensi a
+            LEFT JOIN karyawan k ON k.id_karyawan = a.id_karyawan
+            WHERE a.status_absen = 'pending'
+              AND DATE(a.tanggal_absen) = {date_filter}
+            ORDER BY a.tanggal_absen DESC
+          """
+          await cursor.execute(q_pending_list, params)
+          absen_pending_list = await cursor.fetchall()
+
+          # 3) Tidak masuk hari ini (cuti/sakit/izin) (count + list)
+          q_ga_hadir_count = f"""
+            SELECT COUNT(*) as ga_hadir
+            FROM absensi
+            WHERE pengajuan IN ('cuti', 'sakit', 'izin')
+              AND DATE(tanggal_absen) = {date_filter}
+          """
+          await cursor.execute(q_ga_hadir_count, params)
+          data_ga_hadir = await cursor.fetchone()
+
+          q_ga_hadir_list = f"""
+            SELECT
+              a.id_absensi as id,
+              a.id_karyawan,
+              k.nama_karyawan as nama,
+              a.tanggal_absen, a.pengajuan, a.status_absen
+            FROM absensi a
+            LEFT JOIN karyawan k ON k.id_karyawan = a.id_karyawan
+            WHERE a.pengajuan IN ('cuti', 'sakit', 'izin')
+              AND DATE(a.tanggal_absen) = {date_filter}
+            ORDER BY k.nama_karyawan ASC
+          """
+          await cursor.execute(q_ga_hadir_list, params)
+          ga_hadir_list = await cursor.fetchall()
+
+          logger.info("ADMIN MENGAKSES DASHBOARD")
 
           return {
-            "total_karyawan": items2,
-            "absen_pending": items,
-            "data_ga_hadir": items3,
+            "total_karyawan": total_karyawan,  # {karyawan: N}
+            "total_karyawan_list": total_karyawan_list,  # [...]
+            "absen_pending": absen_pending,  # {pending: N}
+            "absen_pending_list": absen_pending_list,  # [...]
+            "data_ga_hadir": data_ga_hadir,  # {ga_hadir: N}
+            "ga_hadir_list": ga_hadir_list,  # [...]
           }
 
-        except aiomysqlerror as e:
+        except aiomysql.Error as e:
           return JSONResponse(
             content={"status": "error", "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": "error", "message": f"HTTP Error {str(e)}"},
             status_code=e.status_code,
           )
 
