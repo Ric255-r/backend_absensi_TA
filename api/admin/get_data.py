@@ -64,12 +64,26 @@ async def get_absensi(request: Request, tgl: Optional[str] = Query(None)):
             kondisi = "WHERE DATE(a.tanggal_absen) = DATE(CURDATE())"
 
           q1 = f"""
-            SELECT a.*, k.nama_karyawan, d.nama_departemen FROM absensi a
+            SELECT
+              a.*,
+              k.nama_karyawan,
+              d.nama_departemen,
+              CASE
+                WHEN a.pengajuan IN ('cuti', 'izin', 'sakit')
+                THEN pa.foto_lampiran
+                ELSE NULL
+              END AS foto_lampiran
+            FROM absensi a
             INNER JOIN karyawan k ON a.id_karyawan = k.id_karyawan
             INNER JOIN departemen d ON k.id_departemen = d.id_departemen
+            LEFT JOIN pengajuan_absen pa
+              ON pa.id_karyawan = a.id_karyawan
+              AND a.pengajuan IN ('cuti', 'izin', 'sakit')
+              AND DATE(a.tanggal_absen) BETWEEN pa.tanggal_mulai AND pa.tanggal_akhir
             {kondisi}
-            ORDER BY DATE(a.tanggal_absen) DESC
+            ORDER BY a.tanggal_absen DESC
           """
+
           await cursor.execute(q1, tuple(params))
           items = await cursor.fetchall()
 
