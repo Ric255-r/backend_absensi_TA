@@ -646,8 +646,9 @@ async def exportExcel(
           periode_laporan = ""
 
           if start_date and end_date:
-            # Sementara ga pake dlu yg kondisi if ini
-            # periode_laporan = f"{formatStrDate(start_date)} s/d {formatStrDate(end_date)}"
+            periode_laporan = (
+              f"{formatStrDate(start_date)} s/d {formatStrDate(end_date)}"
+            )
             kondisi = "WHERE DATE(a.tanggal_absen) BETWEEN %s AND %s"
             params.extend([start_date, end_date])
           elif start_date:
@@ -705,7 +706,7 @@ async def exportExcel(
           # Main Title
           ws.merge_cells("A1:I1")
           corp_cell = ws["A1"]
-          corp_cell.value = "CV BENGKEL TEKNOLOGI DISTRIBUSI"
+          corp_cell.value = "CV BENGKEL TEKNOLOGI INDONESIA"
           corp_cell.alignment = Alignment(horizontal="center", vertical="center")
           corp_cell.font = Font(bold=True, size=16)
 
