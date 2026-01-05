@@ -48,8 +48,8 @@ def get_foto_checkout(filename: str):
 
 # Ini Adalah Lokasi saya, Untuk Uji Coba agar absen saya diapprove
 # Maka saya akan mengubah lokasi objek penelitian kepada lokasi saya saat ini
-LATITUDE_BENGKOM = -0.0317901
-LONGITUDE_BENGKOM = 109.3429086
+LATITUDE_BENGKOM = -0.0615383
+LONGITUDE_BENGKOM = 109.3961218
 
 
 # # Original Lokasi Bengkel Teknologi Indonesia
@@ -283,12 +283,24 @@ async def _get_indonesian_day_name(pool: aiomysql.Pool):
 
 
 # Helper function to get schedule info. It uses its OWN connection.
-async def _get_schedule_and_time(pool: aiomysql.Pool, day_name: str):
+async def _get_schedule_and_time(pool: aiomysql.Pool, day_name: str, user_id: str):
   async with pool.acquire() as conn:
     async with conn.cursor(aiomysql.DictCursor) as cursor:
-      q = "SELECT shift_mulai, TIME(NOW()) as jam_skrg FROM jadwal_kerja WHERE hari_dalam_seminggu = %s"
-      await cursor.execute(q, (day_name,))
-      return await cursor.fetchone()
+      q = """
+          SELECT 
+              jk.shift_mulai, 
+              jk.shift_selesai,
+              TIME(NOW()) as jam_skrg,
+              jk.nama_shift
+          FROM jadwal_kerja jk
+          JOIN karyawan k ON jk.nama_shift = k.kode_shift
+          WHERE jk.hari_dalam_seminggu = %s 
+          AND k.id_karyawan = %s
+      """
+      await cursor.execute(q, (day_name, user_id))
+      data = await cursor.fetchone()
+      print(data)
+      return data
 
 
 def save_upload_file(upload: UploadFile, dest: str):
@@ -309,11 +321,6 @@ async def absen_hadir(
   try:
     pool = await get_db()
 
-    # --- Step 1: Perform independent READ operations in parallel ---
-    # These tasks run concurrently, each on its own database connection.
-    # fn_hari = _get_indonesian_day_name(pool)
-    # fn_config = _get_lateness_tolerance(pool)
-
     # We await them together. The total wait time is the time of the LONGEST query.
     day_item, config_item = await asyncio.gather(
       _get_indonesian_day_name(pool), _get_lateness_tolerance(pool)
@@ -329,11 +336,16 @@ async def absen_hadir(
       )
 
     # Now get the schedule, which depends on the day name
-    schedule_item = await _get_schedule_and_time(pool, day_item["hari_ini"])
+    schedule_item = await _get_schedule_and_time(
+      pool, day_item["hari_ini"], user["id_karyawan"]
+    )
 
     if not schedule_item:
       return JSONResponse(
-        content={"status": "error", "message": "Work schedule for today not found."},
+        content={
+          "status": "error",
+          "message": f"Jadwal kerja untuk hari {day_item['hari_ini']} tidak ditemukan untuk shift anda.",
+        },
         status_code=404,
       )
 
@@ -430,21 +442,6 @@ async def absen_hadir(
                 }
               )
             )
-
-          # Sistem Fire and Forget. klo begini proses dari route /check_in ga terhambat krna write file
-          # async def _save_file_bg():
-          #   try:
-          #     # Write Filenya
-          #     loop = asyncio.get_event_loop()
-          #     await loop.run_in_executor(
-          #       FILE_IO_EXECUTOR,
-          #       lambda: open(file_location, 'wb').write(content)
-          #     )
-          #     # async with aiofiles.open(file_location, 'wb') as f:
-          #     #   await f.write(content)
-          #     print("Sukses Simpan File")
-          #   except Exception as e:
-          #     print(f"Gagal Simpan File di BG: {str(e)}")
 
           # # Pakai asyncio utk run di bg
           # asyncio.create_task(_save_file_bg())
