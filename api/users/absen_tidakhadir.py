@@ -16,6 +16,7 @@ from typing import Iterable, Dict, Any, Optional, Union
 app = APIRouter(prefix="/absen_tidakhadir")
 
 FOTO_TIDAK_HADIR = "api/images/tidak_hadir"
+TIPE_CUTI = ("liburan", "cuti")
 
 
 @app.get("/foto_tidakhadir/{filename}")
@@ -88,7 +89,7 @@ async def store_data(
 
           # --- VALIDASI KOUTA CUTI ---
           # sesuaikan tipe yang dihitung sebagai cuti
-          tipe_yang_dihitung_cuti = ("liburan", "izin", "cuti")
+          tipe_yang_dihitung_cuti = TIPE_CUTI
 
           # 2. Ambil tipe yang diajukan user dari payload
           tipe_diajukan_user = data.get("tipe_pengajuan")
@@ -278,7 +279,7 @@ async def get_summary_cuti_saya(
         try:
           # Tentukan tipe apa saja yang dihitung sebagai cuti
           # (Harus sama dengan yang di 'store_data')
-          tipe_cuti = ("liburan", "izin", "cuti")
+          tipe_cuti = TIPE_CUTI
 
           # Panggil fungsi summary yang sudah ada
           summary = await get_cuti_summary(
@@ -311,20 +312,26 @@ async def get_summary_cuti_saya(
     )
 
 
-def calculate_working_days(start_date: date, end_date: date) -> int:
+# Tambahkan parameter holidays
+def calculate_working_days(
+  start_date: date, end_date: date, holidays: Dict[date, str]
+) -> int:
   """
-  Menghitung jumlah hari kerja antara dua tanggal (inklusif).
-  Mengabaikan Sabtu (5) dan Minggu (6).
-  TODO: Bisa dikembangkan lagi untuk mengecek tabel 'hari_libur_nasional'
+  Menghitung durasi cuti PRIBADI.
+  Mengabaikan Weekend, Libur Nasional, DAN Cuti Bersama.
+  (Karena Cuti Bersama dipotong dari 'Plafon' kuota, bukan dari durasi request).
   """
   total_days = 0
   current_date = start_date
   while current_date <= end_date:
-    # weekday(): 0=Senin, 1=Selasa, ... 5=Sabtu, 6=Minggu
-    if (
-      current_date.weekday() < 6
-    ):  # Hanya Senin s/d Jumat (Ubah ke < 6 jika Sabtu masuk)
-      total_days += 1
+    # 1. Cek Weekend (0-4 = Senin-Jumat, 5=Sabtu, 6=Minggu)
+    if current_date.weekday() < 6:
+      # 2. Cek apakah tanggal ini ada di tabel hari_libur?
+      #    Baik itu 'nasional' atau 'cuti_bersama', JANGAN dihitung sebagai
+      #    hari pengajuan cuti pribadi.
+      if current_date not in holidays:
+        total_days += 1
+
     current_date += timedelta(days=1)
   return total_days
 
@@ -332,107 +339,120 @@ def calculate_working_days(start_date: date, end_date: date) -> int:
 async def get_cuti_summary(
   cursor: aiomysql.DictCursor,
   id_karyawan: str,
-  tipe_dianggap_cuti: Iterable[str] = ("liburan", "izin"),
+  tipe_dianggap_cuti: Iterable[str] = TIPE_CUTI,
   tahan_pending: bool = True,
   lock_config: bool = False,
 ) -> Dict[str, Any]:
   """
-  Mengembalikan ringkasan cuti tahun berjalan dengan logika yang lebih
-  mudah dibaca (kalkulasi hari di Python).
+  Mengembalikan ringkasan cuti tahun berjalan.
+  Fitur:
+  - 6 Hari Kerja (Senin-Sabtu).
+  - Jatah cuti per individu (dari tabel karyawan).
+  - Cuti Bersama otomatis memotong jatah (jika jatuh Senin-Sabtu).
   """
   # 1. Tentukan rentang tahun berjalan
   tahun_ini = date.today().year
   start_tahun_ini = date(tahun_ini, 1, 1)
   end_tahun_ini = date(tahun_ini, 12, 31)
 
-  # 2. AMBIL KUOTA INDIVIDU DARI TABEL KARYAWAN (Bukan Konfigurasi Global lagi)
+  # 2. AMBIL KUOTA AWAL DARI TABEL KARYAWAN
+  #    (Default 12 jika belum di-set)
   sql_karyawan = "SELECT jatah_cuti_tahunan FROM karyawan WHERE id_karyawan = %s"
   await cursor.execute(sql_karyawan, (id_karyawan,))
   row_kry = await cursor.fetchone()
-  maks_hari_cuti = (row_kry or {}).get("jatah_cuti_tahunan", 12)
+  jatah_awal = (row_kry or {}).get("jatah_cuti_tahunan", 12)
 
-  # Ubah tuple tipe cuti menjadi list untuk query
+  # 3. AMBIL DATA HARI LIBUR & HITUNG POTONGAN CUTI BERSAMA
+  #    Kita load semua libur tahun ini ke dictionary memori
+  sql_libur = "SELECT tanggal, tipe FROM hari_libur WHERE YEAR(tanggal) = %s"
+  await cursor.execute(sql_libur, (tahun_ini,))
+  rows_libur = await cursor.fetchall()
+
+  holidays_dict = {}
+  total_potongan_bersama = 0
+
+  for row in rows_libur:
+    tgl = _as_date(row["tanggal"])
+    tipe = row["tipe"]
+    holidays_dict[tgl] = tipe
+
+    # LOGIKA POTONGAN JATAH:
+    # Jika tipe 'cuti_bersama' jatuh di hari kerja (Senin-Sabtu),
+    # maka jatah cuti karyawan dikurangi.
+    if tipe == "cuti_bersama":
+      if tgl.weekday() < 6:
+        total_potongan_bersama += 1
+
+  # 4. HITUNG KUOTA EFEKTIF
+  #    Kuota yang bisa dipakai = Jatah Awal - Cuti Bersama
+  kuota_efektif = max(0, jatah_awal - total_potongan_bersama)
+
+  # 5. AMBIL PENGAJUAN PRIBADI USER
   tipe_list = list(tipe_dianggap_cuti)
 
+  # Jika tidak ada tipe cuti yang didefinisikan, return data dasar
   if not tipe_list:
-    # Jika tidak ada tipe yang dihitung, langsung kembalikan
     return {
-      "maks_hari_cuti": maks_hari_cuti,
+      "jatah_awal": jatah_awal,
+      "potongan_cuti_bersama": total_potongan_bersama,
+      "kuota_efektif": kuota_efektif,
       "hari_approved": 0,
       "hari_pending": 0,
-      "sisa_tanpa_pending": maks_hari_cuti,
-      "sisa_dengan_pending": maks_hari_cuti,
+      "sisa_tanpa_pending": kuota_efektif,
+      "sisa_dengan_pending": kuota_efektif,
     }
 
-  # 3. Ambil SEMUA pengajuan yang relevan (approved/pending)
-  #    yang TUMPANG TINDIH dengan tahun ini.
-
-  # Format IN clause secara dinamis
   in_clause_tipe = ",".join(["%s"] * len(tipe_list))
-
   sql_fetch = f"""
     SELECT status, tanggal_mulai, tanggal_akhir
     FROM pengajuan_absen
     WHERE id_karyawan = %s
-      AND status IN ('approved', 'pending')
-      AND tipe_pengajuan IN ({in_clause_tipe})
-      AND tanggal_mulai <= %s  -- Tumpang tindih DENGAN...
-      AND tanggal_akhir >= %s -- ...rentang tahun ini
-    """
-  # Parameter query-nya
-  params = (
-    id_karyawan,
-    *tipe_list,
-    end_tahun_ini,  # tanggal_mulai <= 31 Des 2025
-    start_tahun_ini,  # tanggal_akhir >= 1 Jan 2025
-  )
-
+    AND status IN ('approved', 'pending')
+    AND tipe_pengajuan IN ({in_clause_tipe})
+    AND tanggal_mulai <= %s AND tanggal_akhir >= %s
+  """
+  params = (id_karyawan, *tipe_list, end_tahun_ini, start_tahun_ini)
   await cursor.execute(sql_fetch, params)
   semua_pengajuan = await cursor.fetchall()
 
-  # 4. Hitung total hari di Python
+  # 6. HITUNG DURASI PEMAKAIAN
   hari_approved = 0
   hari_pending = 0
 
   for pengajuan in semua_pengajuan:
-    p_start = (
-      pengajuan["tanggal_mulai"]
-      if isinstance(pengajuan["tanggal_mulai"], date)
-      else datetime.strptime(str(pengajuan["tanggal_mulai"]), "%Y-%m-%d").date()
-    )
-    p_end = (
-      pengajuan["tanggal_akhir"]
-      if isinstance(pengajuan["tanggal_akhir"], date)
-      else datetime.strptime(str(pengajuan["tanggal_akhir"]), "%Y-%m-%d").date()
-    )
+    p_start = _as_date(pengajuan["tanggal_mulai"])
+    p_end = _as_date(pengajuan["tanggal_akhir"])
 
+    # Cari irisan (overlap) dengan tahun ini
     overlap_start = max(p_start, start_tahun_ini)
     overlap_end = min(p_end, end_tahun_ini)
 
-    # JIKA range valid
     if overlap_end >= overlap_start:
-      # PANGGIL FUNGSI BARU KITA DISINI
-      jumlah_hari_kerja = calculate_working_days(overlap_start, overlap_end)
+      # Hitung hari kerja (Senin-Sabtu) exclude Libur & Cuti Bersama
+      durasi = calculate_working_days(overlap_start, overlap_end, holidays_dict)
 
-      if jumlah_hari_kerja > 0:
+      if durasi > 0:
         if pengajuan["status"] == "approved":
-          hari_approved += jumlah_hari_kerja
+          hari_approved += durasi
         elif pengajuan["status"] == "pending":
-          hari_pending += jumlah_hari_kerja
+          hari_pending += durasi
 
-  total_terpakai = hari_approved
+  # 7. HITUNG SISA AKHIR
+  total_terpakai_pribadi = hari_approved
   if tahan_pending:
-    total_terpakai += hari_pending
+    total_terpakai_pribadi += hari_pending
 
-  sisa_dengan_pending = max(0, maks_hari_cuti - total_terpakai)
-  sisa_tanpa_pending = max(0, maks_hari_cuti - hari_approved)
+  sisa_dengan_pending = max(0, kuota_efektif - total_terpakai_pribadi)
+  sisa_tanpa_pending = max(0, kuota_efektif - hari_approved)
 
   return {
-    "maks_hari_cuti": maks_hari_cuti,
-    "hari_approved": hari_approved,
-    "hari_pending": hari_pending,
-    "sisa_tanpa_pending": sisa_tanpa_pending,
-    "sisa_dengan_pending": sisa_dengan_pending,
+    "jatah_awal": jatah_awal,  # Cth: 12
+    "potongan_cuti_bersama": total_potongan_bersama,  # Cth: 4 (Jatuh di Weekday)
+    "kuota_efektif": kuota_efektif,  # Cth: 8 (12-4)
+    "hari_approved": hari_approved,  # Cuti pribadi yg sudah di-acc
+    "hari_pending": hari_pending,  # Cuti pribadi yg msh pending
+    "sisa_tanpa_pending": sisa_tanpa_pending,  # Sisa jika pending ditolak
+    "sisa_dengan_pending": sisa_dengan_pending,  # Sisa real saat ini (aman untuk validasi)
   }
 
 
@@ -441,7 +461,7 @@ async def validate_cuti_request(
   id_karyawan: str,
   tanggal_mulai: Union[str, date],
   tanggal_akhir: Union[str, date],
-  tipe_dianggap_cuti: Iterable[str] = ("liburan", "izin"),
+  tipe_dianggap_cuti: Iterable[str] = TIPE_CUTI,
   tahan_pending: bool = True,
   lock_config: bool = True,
 ) -> Dict[str, Any]:
@@ -478,7 +498,18 @@ async def validate_cuti_request(
     overlap_end = min(t_akhir, end_tahun_ini)
 
     if overlap_end >= overlap_start:
-      hari_diajukan_tahun_ini = calculate_working_days(overlap_start, overlap_end)
+      # --- PERBAIKAN: Ambil data libur dulu ---
+      sql_libur = "SELECT tanggal, tipe FROM hari_libur WHERE YEAR(tanggal) = %s"
+      await cursor.execute(sql_libur, (tahun_ini,))
+      rows_libur = await cursor.fetchall()
+
+      # Konversi ke Dictionary
+      holidays_dict = {_as_date(row["tanggal"]): row["tipe"] for row in rows_libur}
+
+      # Masukkan holidays_dict ke dalam fungsi
+      hari_diajukan_tahun_ini = calculate_working_days(
+        overlap_start, overlap_end, holidays_dict
+      )
     else:
       hari_diajukan_tahun_ini = 0
 
