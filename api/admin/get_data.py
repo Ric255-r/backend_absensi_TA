@@ -834,3 +834,40 @@ async def exportExcel(
     return JSONResponse(
       {"Error": f"Failed to connect to the database: {str(e)}"}, status_code=500
     )
+
+
+@app.get("/hari_libur")
+async def hari_libur(request: Request):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
+
+          q1 = """
+            SELECT * FROM hari_libur
+          """
+          await cursor.execute(q1)
+          items = await cursor.fetchall()
+
+          return items
+
+        except aiomysqlerror as e:
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )

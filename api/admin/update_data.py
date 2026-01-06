@@ -247,3 +247,51 @@ async def unbind_device(username: str):
     return JSONResponse(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
+
+@app.put("/hari_libur/{id_libur}")
+async def update_hari_libur(id_libur: str, request: Request):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          # 1. Start Transaction
+          await conn.begin()
+
+          # 2. Execute querynya
+          data = await request.json()
+          q1 = """
+            UPDATE hari_libur SET tanggal = %s, keterangan = %s, tipe = %s
+            WHERE id_libur = %s
+          """
+          q1_values = (
+            data["tanggal"],
+            data["keterangan"],
+            data["tipe"],
+            id_libur,
+          )
+          await cursor.execute(q1, q1_values)
+          # 3. Klo Sukses, dia bkl save ke db
+          await conn.commit()
+
+          return {"status": "ok", "message": "Sukses Update Data"}
+
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )

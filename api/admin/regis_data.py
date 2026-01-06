@@ -210,3 +210,44 @@ async def regis_jadwal(request: Request):
     return JSONResponse(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
+
+@app.post("/hari_libur")
+async def regis_hari_libur(request: Request):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          # 1. Start Transaction
+          await conn.begin()
+
+          # 2. Execute querynya
+          data = await request.json()
+          q1 = """
+            INSERT INTO hari_libur (tanggal, keterangan, tipe) VALUES(%s, %s, %s)
+          """
+          await cursor.execute(q1, (data["tanggal"], data["keterangan"], data["tipe"]))
+          # 3. Klo Sukses, dia bkl save ke db
+          await conn.commit()
+
+          return {"status": "ok", "message": "Sukses Simpan Data"}
+
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
