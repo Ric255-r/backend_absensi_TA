@@ -18,15 +18,22 @@ async def regis_karyawan(request: Request):
         try:
           # 1. Start Transaction
           await conn.begin()
-
-          # 2. Execute querynya
           data = await request.json()
+
+          # 2. AMBIL DEFAULT KUOTA DARI KONFIGURASI
+          await cursor.execute(
+            "SELECT maks_hari_cuti FROM konfigurasi_aplikasi LIMIT 1"
+          )
+          config = await cursor.fetchone()
+          default_cuti = config["maks_hari_cuti"] if config else 12
+
           q1 = """
             INSERT INTO karyawan (
               id_karyawan, nama_karyawan, email_karyawan, 
-              nomor_hp, tanggal_rekrut, status, id_departemen, posisi
+              nomor_hp, tanggal_rekrut, status, id_departemen, posisi,
+              jatah_cuti_tahunan
             )
-            VALUES(%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s)
           """
           q1_values = (
             data["id_karyawan"],
@@ -37,6 +44,7 @@ async def regis_karyawan(request: Request):
             data["status"],
             data["id_departemen"],
             data["posisi"],
+            default_cuti,
           )
           await cursor.execute(q1, q1_values)
           # 3. Klo Sukses, dia bkl save ke db

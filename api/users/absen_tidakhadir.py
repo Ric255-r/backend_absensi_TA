@@ -10,7 +10,7 @@ from aiomysql import Error as aiomysqlerror
 from jwt_auth import access_security
 from api.admin.get_data import absensi_connection
 from api.users.absensi import save_upload_file
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Iterable, Dict, Any, Optional, Union
 
 app = APIRouter(prefix="/absen_tidakhadir")
@@ -311,6 +311,24 @@ async def get_summary_cuti_saya(
     )
 
 
+def calculate_working_days(start_date: date, end_date: date) -> int:
+  """
+  Menghitung jumlah hari kerja antara dua tanggal (inklusif).
+  Mengabaikan Sabtu (5) dan Minggu (6).
+  TODO: Bisa dikembangkan lagi untuk mengecek tabel 'hari_libur_nasional'
+  """
+  total_days = 0
+  current_date = start_date
+  while current_date <= end_date:
+    # weekday(): 0=Senin, 1=Selasa, ... 5=Sabtu, 6=Minggu
+    if (
+      current_date.weekday() < 6
+    ):  # Hanya Senin s/d Jumat (Ubah ke < 6 jika Sabtu masuk)
+      total_days += 1
+    current_date += timedelta(days=1)
+  return total_days
+
+
 async def get_cuti_summary(
   cursor: aiomysql.DictCursor,
   id_karyawan: str,
@@ -327,18 +345,11 @@ async def get_cuti_summary(
   start_tahun_ini = date(tahun_ini, 1, 1)
   end_tahun_ini = date(tahun_ini, 12, 31)
 
-  # 2. Ambil Kuota Cuti Global dari Konfigurasi
-  #    (lock_config=True akan mengunci baris ini selama transaksi
-  #     untuk mencegah race condition saat dua user submit bersamaan)
-  sql_cfg = (
-    "SELECT maks_hari_cuti FROM konfigurasi_aplikasi ORDER BY id_pengaturan ASC LIMIT 1"
-  )
-  if lock_config:
-    sql_cfg += " FOR UPDATE"
-
-  await cursor.execute(sql_cfg)
-  row_cfg = await cursor.fetchone()
-  maks_hari_cuti = (row_cfg or {}).get("maks_hari_cuti", 0)
+  # 2. AMBIL KUOTA INDIVIDU DARI TABEL KARYAWAN (Bukan Konfigurasi Global lagi)
+  sql_karyawan = "SELECT jatah_cuti_tahunan FROM karyawan WHERE id_karyawan = %s"
+  await cursor.execute(sql_karyawan, (id_karyawan,))
+  row_kry = await cursor.fetchone()
+  maks_hari_cuti = (row_kry or {}).get("jatah_cuti_tahunan", 12)
 
   # Ubah tuple tipe cuti menjadi list untuk query
   tipe_list = list(tipe_dianggap_cuti)
@@ -384,38 +395,37 @@ async def get_cuti_summary(
   hari_pending = 0
 
   for pengajuan in semua_pengajuan:
-    # Tentukan rentang tanggal yang tumpang tindih DENGAN TAHUN INI
-    # Contoh: Cuti 29 Des 2024 - 5 Jan 2025
+    p_start = (
+      pengajuan["tanggal_mulai"]
+      if isinstance(pengajuan["tanggal_mulai"], date)
+      else datetime.strptime(str(pengajuan["tanggal_mulai"]), "%Y-%m-%d").date()
+    )
+    p_end = (
+      pengajuan["tanggal_akhir"]
+      if isinstance(pengajuan["tanggal_akhir"], date)
+      else datetime.strptime(str(pengajuan["tanggal_akhir"]), "%Y-%m-%d").date()
+    )
 
-    # Tanggal mulai overlap: Ambil yang paling akhir
-    # max('2024-12-29', '2025-01-01') -> '2025-01-01'
-    overlap_start = max(pengajuan["tanggal_mulai"], start_tahun_ini)
+    overlap_start = max(p_start, start_tahun_ini)
+    overlap_end = min(p_end, end_tahun_ini)
 
-    print("Isi Pengajuan", pengajuan)
+    # JIKA range valid
+    if overlap_end >= overlap_start:
+      # PANGGIL FUNGSI BARU KITA DISINI
+      jumlah_hari_kerja = calculate_working_days(overlap_start, overlap_end)
 
-    # Tanggal akhir overlap: Ambil yang paling awal
-    # min('2025-01-05', '2025-12-31') -> '2025-01-05'
-    overlap_end = min(pengajuan["tanggal_akhir"], end_tahun_ini)
-
-    # Hitung durasi dalam rentang overlap
-    # (5 Jan - 1 Jan) = 4 hari. Ditambah 1 agar inklusif = 5 hari.
-    # Ini adalah 5 hari yang dihitung untuk kuota 2025
-    jumlah_hari_di_tahun_ini = (overlap_end - overlap_start).days + 1
-
-    if jumlah_hari_di_tahun_ini > 0:
-      if pengajuan["status"] == "approved":
-        hari_approved += jumlah_hari_di_tahun_ini
-      elif pengajuan["status"] == "pending":
-        hari_pending += jumlah_hari_di_tahun_ini
-
-  # 5. Hitung sisa kuota
-  sisa_tanpa_pending = max(0, maks_hari_cuti - hari_approved)
+      if jumlah_hari_kerja > 0:
+        if pengajuan["status"] == "approved":
+          hari_approved += jumlah_hari_kerja
+        elif pengajuan["status"] == "pending":
+          hari_pending += jumlah_hari_kerja
 
   total_terpakai = hari_approved
   if tahan_pending:
     total_terpakai += hari_pending
 
   sisa_dengan_pending = max(0, maks_hari_cuti - total_terpakai)
+  sisa_tanpa_pending = max(0, maks_hari_cuti - hari_approved)
 
   return {
     "maks_hari_cuti": maks_hari_cuti,
@@ -466,7 +476,11 @@ async def validate_cuti_request(
     # Jika tumpang tindih, hitung hari yang masuk tahun ini
     overlap_start = max(t_mulai, start_tahun_ini)
     overlap_end = min(t_akhir, end_tahun_ini)
-    hari_diajukan_tahun_ini = (overlap_end - overlap_start).days + 1
+
+    if overlap_end >= overlap_start:
+      hari_diajukan_tahun_ini = calculate_working_days(overlap_start, overlap_end)
+    else:
+      hari_diajukan_tahun_ini = 0
 
   if hari_diajukan_tahun_ini <= 0:
     # Tidak ada hari yang membebani tahun ini
