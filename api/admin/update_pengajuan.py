@@ -11,6 +11,12 @@ app = APIRouter(prefix="/admin")
 
 # Ini dari User ke Admin
 admin_to_user_conn = []
+STATUS_APPROVED = "approved"
+STATUS_REJECTED = "rejected"
+ALASAN_PENOLAKAN_DEFAULT = "-"
+DATE_FORMAT_YMD = "%Y-%m-%d"
+DEFAULT_FOTO_PLACEHOLDER = "no-foto"
+SUCCESS_UPDATE_MESSAGE = "Data Berhasil Di Update"
 
 
 @app.websocket("/ws-user")
@@ -44,7 +50,7 @@ async def update_status_absensi(
           if is_bulk:
             # Jika Massive Update
             for item in data["updated_bulk_data"]:
-              if item["status_absen"] == "rejected":
+              if item["status_absen"] == STATUS_REJECTED:
                 log_message = (
                   f"Karyawan [{item['id_karyawan']}] Sudah Di Reject. Skipped From Bulk"
                 )
@@ -57,7 +63,9 @@ async def update_status_absensi(
               """
               q1_values = [
                 item["status_absen"],
-                item["alasan_penolakan"] if "alasan_penolakan" in item else "-",
+                item["alasan_penolakan"]
+                if "alasan_penolakan" in item
+                else ALASAN_PENOLAKAN_DEFAULT,
                 item["id_karyawan"],
                 item["id_absensi"],
               ]
@@ -86,7 +94,9 @@ async def update_status_absensi(
             """
             q1_values = [
               data["status_absen"],
-              data["alasan_penolakan"] if "alasan_penolakan" in data else "-",
+              data["alasan_penolakan"]
+              if "alasan_penolakan" in data
+              else ALASAN_PENOLAKAN_DEFAULT,
               data["id_karyawan"],
               data["id_absensi"],
             ]
@@ -113,7 +123,7 @@ async def update_status_absensi(
 
           await conn.commit()
 
-          return {"Success": "Data Berhasil Di Update"}
+          return {"Success": SUCCESS_UPDATE_MESSAGE}
 
         except aiomysqlerror as e:
           await conn.rollback()
@@ -170,11 +180,13 @@ async def update_pengajuan(request: Request):
             await cursor.execute(update_query, update_values)
 
           # --- CASE 2: The request is being APPROVED ---
-          elif data["status"] == "approved":
-            print("approved")
+          elif data["status"] == STATUS_APPROVED:
+            print(STATUS_APPROVED)
             # Parse start and end dates
-            start_d = datetime.strptime(data["tanggal_mulai"], "%Y-%m-%d").date()
-            end_d = datetime.strptime(data["tanggal_akhir"], "%Y-%m-%d").date()
+            start_d = datetime.strptime(
+              data["tanggal_mulai"], DATE_FORMAT_YMD
+            ).date()
+            end_d = datetime.strptime(data["tanggal_akhir"], DATE_FORMAT_YMD).date()
 
             if end_d < start_d:
               raise HTTPException(
@@ -202,17 +214,17 @@ async def update_pengajuan(request: Request):
               if d in existing_dates:
                 # continue
                 rows_to_update.append(
-                  (data["status"], d.strftime("%Y-%m-%d"), data["id_karyawan"]),
+                  (data["status"], d.strftime(DATE_FORMAT_YMD), data["id_karyawan"]),
                 )
               else:
                 rows_to_insert.append(
                   (
                     data["id_karyawan"],
-                    d.strftime("%Y-%m-%d"),
-                    d.strftime("%Y-%m-%d"),
+                    d.strftime(DATE_FORMAT_YMD),
+                    d.strftime(DATE_FORMAT_YMD),
                     0.0,
                     0.0,
-                    "no-foto",
+                    DEFAULT_FOTO_PLACEHOLDER,
                     data["tipe_pengajuan"],
                     data["status"],
                   )
@@ -275,7 +287,7 @@ async def update_pengajuan(request: Request):
               )
             )
 
-          return {"Success": "Data Berhasil Di Update"}
+          return {"Success": SUCCESS_UPDATE_MESSAGE}
 
         except (aiomysql.Error, HTTPException) as e:
           await conn.rollback()
