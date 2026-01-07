@@ -161,3 +161,42 @@ async def delete_hari_libur(id_libur: str):
     return JSONResponse(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
+
+@app.delete("/jadwal_kerja/{id_jadwal}")
+async def delete_jadwal_kerja(id_jadwal: str):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          # 1. Start Transaction
+          await conn.begin()
+
+          q1 = """
+            DELETE FROM jadwal_kerja WHERE id_jadwal = %s
+          """
+          await cursor.execute(q1, id_jadwal)
+          # 3. Klo Sukses, dia bkl save ke db
+          await conn.commit()
+
+          return {"status": "ok", "message": "Sukses Delete Data"}
+
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )

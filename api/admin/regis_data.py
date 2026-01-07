@@ -167,7 +167,7 @@ async def regis_departemen(request: Request):
     )
 
 
-@app.post("/regis_jadwal_krywn")
+@app.post("/jadwal_kerja")
 async def regis_jadwal(request: Request):
   try:
     pool = await get_db()
@@ -181,12 +181,17 @@ async def regis_jadwal(request: Request):
           # 2. Execute querynya
           data = await request.json()
           q1 = """
-            INSERT INTO jadwal_karyawan (
-              id_karyawan, id_jadwal
+            INSERT INTO jadwal_kerja (
+              nama_shift, shift_mulai, shift_selesai, hari_dalam_seminggu
             )
-            VALUES(%s, %s)
+            VALUES(%s, %s, %s, %s)
           """
-          q1_values = (data["id_karyawan"], data["id_jadwal"])
+          q1_values = (
+            data["nama_shift"],
+            data["shift_mulai"],
+            data["shift_selesai"],
+            data["hari_dalam_seminggu"],
+          )
           await cursor.execute(q1, q1_values)
           # 3. Klo Sukses, dia bkl save ke db
           await conn.commit()

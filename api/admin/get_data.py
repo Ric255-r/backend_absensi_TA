@@ -473,8 +473,8 @@ async def get_konfigurasi(request: Request):
     )
 
 
-@app.get("/get_jadwal")
-async def get_jadwal(request: Request):
+@app.get("/jadwal_kerja")
+async def jadwal_kerja(request: Request):
   try:
     pool = await get_db()
 
