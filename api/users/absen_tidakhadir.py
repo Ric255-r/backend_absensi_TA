@@ -17,12 +17,47 @@ app = APIRouter(prefix="/absen_tidakhadir")
 
 FOTO_TIDAK_HADIR = "api/images/tidak_hadir"
 TIPE_CUTI = ("liburan", "cuti")
+MEDIA_TYPE_PNG = "image/png"
+IMAGE_EXTENSION_PNG = ".png"
+STATUS_ERROR = "error"
+STATUS_SUCCESS = "success"
+STATUS_PENDING = "pending"
+STATUS_APPROVED = "approved"
+EVENT_PENGAJUAN_CREATED = "pengajuan_created"
+MESSAGE_TYPE_REQUIRED = "tipe_pengajuan wajib diisi"
+MESSAGE_OVERRIDE_CONFIRM = (
+  "Anda sudah melakukan absen hari ini, Anda Yakin ingin Mengoverride?"
+)
+MESSAGE_DB_ERROR_PREFIX = "Database Error"
+MESSAGE_HTTP_ERROR_PREFIX = "HTTP Error Error"
+MESSAGE_CONNECTION_ERROR_PREFIX = "Koneksi Error"
+MESSAGE_REQUESTED = "Pengajuan di Minta"
+MESSAGE_END_DATE_BEFORE_START = "Tanggal akhir tidak boleh sebelum tanggal mulai."
+MESSAGE_VALID_NO_QUOTA = "Pengajuan valid (tidak membebani kuota tahun ini)."
+MESSAGE_WITHIN_QUOTA = "Pengajuan masih dalam batas kuota."
+MESSAGE_QUOTA_EXCEEDED = (
+  "Pengajuan {requested} hari (di tahun ini) melebihi sisa kuota {remaining} hari."
+)
+DATE_FORMAT_YMD = "%Y-%m-%d"
+RESPONSE_KEY_SUCCESS = "Sukses"
+EMPTY_STRING = ""
+DEFAULT_JATAH_CUTI = 12
+WEEKDAY_SUNDAY_INDEX = 6
+YEAR_START_MONTH = 1
+YEAR_START_DAY = 1
+YEAR_END_MONTH = 12
+YEAR_END_DAY = 31
+DAY_INCREMENT = 1
+HTTP_OK = 200
+HTTP_BAD_REQUEST = 400
+HTTP_INTERNAL_SERVER_ERROR = 500
+TIPE_CUTI_BERSAMA = "cuti_bersama"
 
 
 @app.get("/foto_tidakhadir/{filename}")
 def get_foto_tidakhadir(filename: str):
   img_path = os.path.join(FOTO_TIDAK_HADIR, filename)
-  return FileResponse(img_path, media_type="image/png")
+  return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
 
 
 @app.get("/")
@@ -57,18 +92,28 @@ async def get_data(
           return items
         except aiomysqlerror as e:
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
-            status_code=500,
+            content={
+              "status": STATUS_ERROR,
+              "message": f"{MESSAGE_DB_ERROR_PREFIX} {str(e)}",
+            },
+            status_code=HTTP_INTERNAL_SERVER_ERROR,
           )
         except HTTPException as e:
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={
+              "status": STATUS_ERROR,
+              "message": f"{MESSAGE_HTTP_ERROR_PREFIX} {str(e)}",
+            },
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={
+        "status": STATUS_ERROR,
+        "message": f"{MESSAGE_CONNECTION_ERROR_PREFIX} {str(e)}",
+      },
+      status_code=HTTP_INTERNAL_SERVER_ERROR,
     )
 
 
@@ -97,8 +142,8 @@ async def store_data(
           if not tipe_diajukan_user:
             await conn.rollback()
             return JSONResponse(
-              content={"status": "error", "message": "tipe_pengajuan wajib diisi"},
-              status_code=400,
+              content={"status": STATUS_ERROR, "message": MESSAGE_TYPE_REQUIRED},
+              status_code=HTTP_BAD_REQUEST,
             )
 
           # 3. HANYA jalankan validasi JIKA tipe yang diajukan termasuk yang dihitung
@@ -126,19 +171,19 @@ async def store_data(
 
               return JSONResponse(
                 content={
-                  "status": "error",
+                  "status": STATUS_ERROR,
                   "message": v["message"],
                   "detail": detail_error,
                 },
-                status_code=400,
+                status_code=HTTP_BAD_REQUEST,
               )
           # --- END VALIDASI ---
 
           tanggal_mulai_str = data["tanggal_mulai"]
           tanggal_akhir_str = data["tanggal_akhir"]
 
-          tanggal_mulai = datetime.strptime(tanggal_mulai_str, "%Y-%m-%d").date()
-          tanggal_akhir = datetime.strptime(tanggal_akhir_str, "%Y-%m-%d").date()
+          tanggal_mulai = datetime.strptime(tanggal_mulai_str, DATE_FORMAT_YMD).date()
+          tanggal_akhir = datetime.strptime(tanggal_akhir_str, DATE_FORMAT_YMD).date()
           today = date.today()
 
           # Hanya perlu cek override kalau hari ini masuk dalam range pengajuan
@@ -173,15 +218,15 @@ async def store_data(
               await conn.rollback()
               return JSONResponse(
                 content={
-                  "status": "error",
-                  "message": "Anda sudah melakukan absen hari ini, Anda Yakin ingin Mengoverride?",
+                  "status": STATUS_ERROR,
+                  "message": MESSAGE_OVERRIDE_CONFIRM,
                 },
-                status_code=400,
+                status_code=HTTP_BAD_REQUEST,
               )
 
           # saveFile. cek key foto_lampiran ada atau nd
           if "foto_lampiran" in data:
-            filename = f"{uuid.uuid4()}.png"
+            filename = f"{uuid.uuid4()}{IMAGE_EXTENSION_PNG}"
             file_location = os.path.join(FOTO_TIDAK_HADIR, filename)
 
             # content = await data['foto_lampiran'].read()
@@ -211,7 +256,7 @@ async def store_data(
             data["tipe_pengajuan"],
             data["tanggal_mulai"],
             data["tanggal_akhir"],
-            filename if "foto_lampiran" in data else "",
+            filename if "foto_lampiran" in data else EMPTY_STRING,
             data["keterangan"],
           )
           await cursor.execute(q1, q1_values)
@@ -224,33 +269,43 @@ async def store_data(
               "tipe_pengajuan": data["tipe_pengajuan"],
               "tanggal_mulai": data["tanggal_mulai"],
               "tanggal_akhir": data["tanggal_akhir"],
-              "foto_lampiran": filename if "foto_lampiran" in data else "",
+              "foto_lampiran": filename if "foto_lampiran" in data else EMPTY_STRING,
               "keterangan": data["keterangan"],
             },
             pool,
           )
 
-          return {"Sukses": "Pengajuan di Minta"}
+          return {RESPONSE_KEY_SUCCESS: MESSAGE_REQUESTED}
 
         except aiomysqlerror as e:
           await conn.rollback()
-          print("Database Error", str(e))
+          print(MESSAGE_DB_ERROR_PREFIX, str(e))
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
-            status_code=500,
+            content={
+              "status": STATUS_ERROR,
+              "message": f"{MESSAGE_DB_ERROR_PREFIX} {str(e)}",
+            },
+            status_code=HTTP_INTERNAL_SERVER_ERROR,
           )
         except HTTPException as e:
           await conn.rollback()
-          print("HTTP Error Error", str(e))
+          print(MESSAGE_HTTP_ERROR_PREFIX, str(e))
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={
+              "status": STATUS_ERROR,
+              "message": f"{MESSAGE_HTTP_ERROR_PREFIX} {str(e)}",
+            },
             status_code=e.status_code,
           )
 
   except Exception as e:
-    print("Koneksi Error", str(e))
+    print(MESSAGE_CONNECTION_ERROR_PREFIX, str(e))
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={
+        "status": STATUS_ERROR,
+        "message": f"{MESSAGE_CONNECTION_ERROR_PREFIX} {str(e)}",
+      },
+      status_code=HTTP_INTERNAL_SERVER_ERROR,
     )
 
 
@@ -260,7 +315,7 @@ def _as_date(v: str) -> date:
     return v
   if isinstance(v, datetime):
     return v.date()
-  return datetime.strptime(v, "%Y-%m-%d").date()
+  return datetime.strptime(v, DATE_FORMAT_YMD).date()
 
 
 @app.get("/summary_cuti")
@@ -292,23 +347,33 @@ async def get_summary_cuti_saya(
 
           # Kembalikan data summary sebagai JSON
           return JSONResponse(
-            content={"status": "success", "data": summary}, status_code=200
+            content={"status": STATUS_SUCCESS, "data": summary}, status_code=HTTP_OK
           )
 
         except aiomysqlerror as e:
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
-            status_code=500,
+            content={
+              "status": STATUS_ERROR,
+              "message": f"{MESSAGE_DB_ERROR_PREFIX} {str(e)}",
+            },
+            status_code=HTTP_INTERNAL_SERVER_ERROR,
           )
         except HTTPException as e:
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={
+              "status": STATUS_ERROR,
+              "message": f"{MESSAGE_HTTP_ERROR_PREFIX} {str(e)}",
+            },
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={
+        "status": STATUS_ERROR,
+        "message": f"{MESSAGE_CONNECTION_ERROR_PREFIX} {str(e)}",
+      },
+      status_code=HTTP_INTERNAL_SERVER_ERROR,
     )
 
 
@@ -325,14 +390,14 @@ def calculate_working_days(
   current_date = start_date
   while current_date <= end_date:
     # 1. Cek Weekend (0-4 = Senin-Jumat, 5=Sabtu, 6=Minggu)
-    if current_date.weekday() < 6:
+    if current_date.weekday() < WEEKDAY_SUNDAY_INDEX:
       # 2. Cek apakah tanggal ini ada di tabel hari_libur?
       #    Baik itu 'nasional' atau 'cuti_bersama', JANGAN dihitung sebagai
       #    hari pengajuan cuti pribadi.
       if current_date not in holidays:
         total_days += 1
 
-    current_date += timedelta(days=1)
+    current_date += timedelta(days=DAY_INCREMENT)
   return total_days
 
 
@@ -352,15 +417,15 @@ async def get_cuti_summary(
   """
   # 1. Tentukan rentang tahun berjalan
   tahun_ini = date.today().year
-  start_tahun_ini = date(tahun_ini, 1, 1)
-  end_tahun_ini = date(tahun_ini, 12, 31)
+  start_tahun_ini = date(tahun_ini, YEAR_START_MONTH, YEAR_START_DAY)
+  end_tahun_ini = date(tahun_ini, YEAR_END_MONTH, YEAR_END_DAY)
 
   # 2. AMBIL KUOTA AWAL DARI TABEL KARYAWAN
   #    (Default 12 jika belum di-set)
   sql_karyawan = "SELECT jatah_cuti_tahunan FROM karyawan WHERE id_karyawan = %s"
   await cursor.execute(sql_karyawan, (id_karyawan,))
   row_kry = await cursor.fetchone()
-  jatah_awal = (row_kry or {}).get("jatah_cuti_tahunan", 12)
+  jatah_awal = (row_kry or {}).get("jatah_cuti_tahunan", DEFAULT_JATAH_CUTI)
 
   # 3. AMBIL DATA HARI LIBUR & HITUNG POTONGAN CUTI BERSAMA
   #    Kita load semua libur tahun ini ke dictionary memori
@@ -379,8 +444,8 @@ async def get_cuti_summary(
     # LOGIKA POTONGAN JATAH:
     # Jika tipe 'cuti_bersama' jatuh di hari kerja (Senin-Sabtu),
     # maka jatah cuti karyawan dikurangi.
-    if tipe == "cuti_bersama":
-      if tgl.weekday() < 6:
+    if tipe == TIPE_CUTI_BERSAMA:
+      if tgl.weekday() < WEEKDAY_SUNDAY_INDEX:
         total_potongan_bersama += 1
 
   # 4. HITUNG KUOTA EFEKTIF
@@ -432,9 +497,9 @@ async def get_cuti_summary(
       durasi = calculate_working_days(overlap_start, overlap_end, holidays_dict)
 
       if durasi > 0:
-        if pengajuan["status"] == "approved":
+        if pengajuan["status"] == STATUS_APPROVED:
           hari_approved += durasi
-        elif pengajuan["status"] == "pending":
+        elif pengajuan["status"] == STATUS_PENDING:
           hari_pending += durasi
 
   # 7. HITUNG SISA AKHIR
@@ -475,7 +540,7 @@ async def validate_cuti_request(
   if t_akhir < t_mulai:
     return {
       "ok": False,
-      "message": "Tanggal akhir tidak boleh sebelum tanggal mulai.",
+      "message": MESSAGE_END_DATE_BEFORE_START,
       "hari_diajukan": 0,
     }
 
@@ -483,8 +548,8 @@ async def validate_cuti_request(
   # (Jika pengajuan lintas tahun, misal 29 Des 2025 - 5 Jan 2026,
   #  kita hanya validasi yang 3 hari di 2025)
   tahun_ini = date.today().year
-  start_tahun_ini = date(tahun_ini, 1, 1)
-  end_tahun_ini = date(tahun_ini, 12, 31)
+  start_tahun_ini = date(tahun_ini, YEAR_START_MONTH, YEAR_START_DAY)
+  end_tahun_ini = date(tahun_ini, YEAR_END_MONTH, YEAR_END_DAY)
 
   # Cek apakah pengajuan ini relevan untuk tahun ini
   if t_mulai > end_tahun_ini or t_akhir < start_tahun_ini:
@@ -517,7 +582,7 @@ async def validate_cuti_request(
     # Tidak ada hari yang membebani tahun ini
     return {
       "ok": True,
-      "message": "Pengajuan valid (tidak membebani kuota tahun ini).",
+      "message": MESSAGE_VALID_NO_QUOTA,
       "hari_diajukan": 0,  # Total hari yang diajukan mungkin > 0, tapi 0 utk tahun ini
     }
 
@@ -539,14 +604,17 @@ async def validate_cuti_request(
   if hari_diajukan_tahun_ini > sisa_kuota:
     return {
       "ok": False,
-      "message": f"Pengajuan {hari_diajukan_tahun_ini} hari (di tahun ini) melebihi sisa kuota {sisa_kuota} hari.",
+      "message": MESSAGE_QUOTA_EXCEEDED.format(
+        requested=hari_diajukan_tahun_ini,
+        remaining=sisa_kuota,
+      ),
       "hari_diajukan": hari_diajukan_tahun_ini,
       **ringkasan,
     }
 
   return {
     "ok": True,
-    "message": "Pengajuan masih dalam batas kuota.",
+    "message": MESSAGE_WITHIN_QUOTA,
     "hari_diajukan": hari_diajukan_tahun_ini,
     **ringkasan,
   }
@@ -564,7 +632,7 @@ async def broadcast_pengajuan_created(pa_row: dict, pool: aiomysql.Pool):
       data_karyawan = await cursor.fetchone()
 
   msg = {
-    "event": "pengajuan_created",
+    "event": EVENT_PENGAJUAN_CREATED,
     "message": f"{data_karyawan['nama_karyawan']} membuat pengajuan {pa_row['tipe_pengajuan']}",
     "effective_date": str(pa_row["tanggal_mulai"]),  # <-- kunci
     "payload": {
@@ -573,9 +641,9 @@ async def broadcast_pengajuan_created(pa_row: dict, pool: aiomysql.Pool):
       "tipe_pengajuan": pa_row["tipe_pengajuan"],
       "tanggal_mulai": str(pa_row["tanggal_mulai"]),
       "tanggal_akhir": str(pa_row["tanggal_akhir"]),
-      "lampiran": pa_row.get("lampiran", "") or "",
-      "keterangan": pa_row.get("keterangan", "") or "",
-      "status": "pending",
+      "lampiran": pa_row.get("lampiran", EMPTY_STRING) or EMPTY_STRING,
+      "keterangan": pa_row.get("keterangan", EMPTY_STRING) or EMPTY_STRING,
+      "status": STATUS_PENDING,
     },
   }
 
@@ -587,3 +655,5 @@ async def broadcast_pengajuan_created(pa_row: dict, pool: aiomysql.Pool):
       dead.append(ws)
   for ws in dead:
     absensi_connection.remove(ws)
+
+

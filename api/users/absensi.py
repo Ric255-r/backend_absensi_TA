@@ -32,18 +32,29 @@ app = APIRouter(prefix="/absen")
 
 FOTO_CHECKIN = "api/images/foto_checkin"
 FOTO_CHECKOUT = "api/images/foto_checkout"
+MEDIA_TYPE_PNG = "image/png"
+IMAGE_EXTENSION = ".jpg"
+STATUS_OK = "ok"
+STATUS_ERROR = "error"
+MESSAGE_ALREADY_CHECKIN = "Anda Sudah Checkin"
+MESSAGE_ALREADY_CHECKOUT = "Anda Sudah CheckOut"
+MESSAGE_NO_CHECKIN = "Belum Ada Checkin"
+MESSAGE_NO_CHECKOUT = "Belum Ada Checkout"
+SQL_READ_COMMITTED = "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+LOCALE_ID = "id_ID"
+TIME_FORMAT_HMS = "%H:%M:%S"
 
 
 @app.get("/foto_checkin/{filename}")
 def get_foto_checkin(filename: str):
   img_path = os.path.join(FOTO_CHECKIN, filename)
-  return FileResponse(img_path, media_type="image/png")
+  return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
 
 
 @app.get("/foto_checkout/{filename}")
 def get_foto_checkout(filename: str):
   img_path = os.path.join(FOTO_CHECKOUT, filename)
-  return FileResponse(img_path, media_type="image/png")
+  return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
 
 
 # Ini Adalah Lokasi saya, Untuk Uji Coba agar absen saya diapprove
@@ -75,9 +86,7 @@ async def get_data(
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
         try:
-          await cursor.execute(
-            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
-          )
+          await cursor.execute(SQL_READ_COMMITTED)
 
           if not month and not year:
             q1 = "SELECT * FROM absensi WHERE DATE(tanggal_absen) = DATE(CURRENT_TIMESTAMP()) and id_karyawan = %s"
@@ -101,18 +110,18 @@ async def get_data(
           return items
         except aiomysqlerror as e:
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
 
 
@@ -127,9 +136,7 @@ async def get_data_checkin(
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
         try:
-          await cursor.execute(
-            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
-          )
+          await cursor.execute(SQL_READ_COMMITTED)
 
           # Returnnya Integer
           q1 = """
@@ -149,28 +156,29 @@ async def get_data_checkin(
           # Jika Data ada, tolak krn udh checkin hari ini
           if bool(items1["has_checkin"]) or bool(items1["in_pengajuan"]):
             return JSONResponse(
-              content={"status": "error", "message": "Anda Sudah Checkin"},
+              content={"status": STATUS_ERROR, "message": MESSAGE_ALREADY_CHECKIN},
               status_code=403,
             )
 
           return JSONResponse(
-            content={"status": "ok", "message": "Belum Ada Checkin"}, status_code=200
+            content={"status": STATUS_OK, "message": MESSAGE_NO_CHECKIN},
+            status_code=200,
           )
 
         except aiomysqlerror as e:
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
 
 
@@ -185,9 +193,7 @@ async def get_data_checkout(
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
         try:
-          await cursor.execute(
-            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
-          )
+          await cursor.execute(SQL_READ_COMMITTED)
 
           # q1 = "SELECT 1 FROM absensi WHERE id_karyawan = %s and DATE(check_out) = DATE(CURRENT_TIMESTAMP())"
           # await cursor.execute(q1, user['id_karyawan'])
@@ -211,28 +217,29 @@ async def get_data_checkout(
           # Jika Data ada, tolak krn udh checkout hari ini
           if bool(items["has_check_out"]) or bool(items["has_pengajuan"]):
             return JSONResponse(
-              content={"status": "error", "message": "Anda Sudah CheckOut"},
+              content={"status": STATUS_ERROR, "message": MESSAGE_ALREADY_CHECKOUT},
               status_code=403,
             )
 
           return JSONResponse(
-            content={"status": "ok", "message": "Belum Ada Checkout"}, status_code=200
+            content={"status": STATUS_OK, "message": MESSAGE_NO_CHECKOUT},
+            status_code=200,
           )
 
         except aiomysqlerror as e:
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
 
 
@@ -277,7 +284,7 @@ async def _get_lateness_tolerance(pool: aiomysql.Pool):
 async def _get_indonesian_day_name(pool: aiomysql.Pool):
   async with pool.acquire() as conn:
     async with conn.cursor(aiomysql.DictCursor) as cursor:
-      await cursor.execute("SET @@lc_time_names = 'id_ID';")
+      await cursor.execute(f"SET @@lc_time_names = '{LOCALE_ID}';")
       await cursor.execute("SELECT DAYNAME(DATE(NOW())) as hari_ini;")
       return await cursor.fetchone()
 
@@ -329,7 +336,7 @@ async def absen_hadir(
     if not day_item or not config_item:
       return JSONResponse(
         content={
-          "status": "error",
+          "status": STATUS_ERROR,
           "message": "Failed to fetch initial data (day or config).",
         },
         status_code=500,
@@ -343,7 +350,7 @@ async def absen_hadir(
     if not schedule_item:
       return JSONResponse(
         content={
-          "status": "error",
+          "status": STATUS_ERROR,
           "message": f"Jadwal kerja untuk hari {day_item['hari_ini']} tidak ditemukan untuk shift anda.",
         },
         status_code=404,
@@ -354,7 +361,7 @@ async def absen_hadir(
     # read foto_checkin. jangan make read. lemot
     # content = await data['foto_checkin'].read()
     # Generate Filename tapi blm di store ke disk
-    filename = f"{uuid.uuid4()}.jpg"
+    filename = f"{uuid.uuid4()}{IMAGE_EXTENSION}"
     file_location = os.path.join(FOTO_CHECKIN, filename)
 
     async with pool.acquire() as conn:
@@ -395,9 +402,10 @@ async def absen_hadir(
           # menit toleransi berbentuk int menit.
           menit_toleransi = config_item["toleransi_terlambat"]
           # Ubah ke bentuk datetime, tapi isi strptime harus string di argumen 1
-          format_waktu = "%H:%M:%S"
-          waktu_checkin_sekarang = datetime.strptime(jam_skrg_str, format_waktu)
-          jadwal_checkin = datetime.strptime(jadwal_checkin_formatted_str, format_waktu)
+          waktu_checkin_sekarang = datetime.strptime(jam_skrg_str, TIME_FORMAT_HMS)
+          jadwal_checkin = datetime.strptime(
+            jadwal_checkin_formatted_str, TIME_FORMAT_HMS
+          )
 
           # hitung batas waktu toleransi
           batas_waktu_checkin = jadwal_checkin + timedelta(minutes=menit_toleransi)
@@ -426,9 +434,7 @@ async def absen_hadir(
           await conn.commit()
 
           # Select Utk Websocket
-          await cursor.execute(
-            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
-          )
+          await cursor.execute(SQL_READ_COMMITTED)
           q5 = "SELECT * FROM karyawan WHERE id_karyawan = %s"
           await cursor.execute(q5, user["id_karyawan"])
           items5 = await cursor.fetchone()
@@ -453,24 +459,24 @@ async def absen_hadir(
             f"Karyawan: {user['nama_karyawan']} Mengajukan Presensi Check In"
           )
 
-          return {"status": "ok", "message": "Sukses Simpan Data"}
+          return {"status": STATUS_OK, "message": "Sukses Simpan Data"}
 
         except aiomysqlerror as e:
           await conn.rollback()
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
           await conn.rollback()
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
 
 
@@ -482,7 +488,7 @@ async def absen_hadir(
 # ):
 #   print("Eksekusi Fungsi Check In")
 
-#   # return JSONResponse(content={"status": "error", "message": f"Isi data user {user['id_karyawan']}"}, status_code=500)
+#   # return JSONResponse(content={"status": STATUS_ERROR, "message": f"Isi data user {user['id_karyawan']}"}, status_code=500)
 #   try:
 #     pool = await get_db()
 
@@ -506,7 +512,7 @@ async def absen_hadir(
 #           item_hari = await cursor.fetchone()
 
 #           if item_hari is None:
-#             return JSONResponse(content={"status": "error", "message": "Error Fetch harian. lokale ? "}, status_code=500)
+#             return JSONResponse(content={"status": STATUS_ERROR, "message": "Error Fetch harian. lokale ? "}, status_code=500)
 
 #           # print(f"Fetched day name: {item_hari['hari_ini']}")
 
@@ -599,20 +605,20 @@ async def absen_hadir(
 #               })
 #             )
 #           return {
-#             "status": "ok",
+#             "status": STATUS_OK,
 #             "message": "Sukses Simpan Data"
 #           }
 
 
 #         except aiomysqlerror as e:
 #           await conn.rollback()
-#           return JSONResponse(content={"status": "error", "message": f"Database Error {str(e)}"}, status_code=500)
+#           return JSONResponse(content={"status": STATUS_ERROR, "message": f"Database Error {str(e)}"}, status_code=500)
 #         except HTTPException as e:
 #           await conn.rollback()
-#           return JSONResponse(content={"status": "error", "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
+#           return JSONResponse(content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"}, status_code=e.status_code)
 
 #   except Exception as e:
-#     return JSONResponse(content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500)
+#     return JSONResponse(content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500)
 
 
 # Update data checkout
@@ -634,7 +640,7 @@ async def check_out(
           # 2. Execute querynya
           data = await request.form()
 
-          filename = f"{uuid.uuid4()}.jpg"
+          filename = f"{uuid.uuid4()}{IMAGE_EXTENSION}"
           file_location = os.path.join(FOTO_CHECKOUT, filename)
 
           # saveFile. Jangan Make Read. Bikin Lambat
@@ -655,9 +661,7 @@ async def check_out(
           await conn.commit()
 
           # Select Utk Websocket
-          await cursor.execute(
-            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
-          )
+          await cursor.execute(SQL_READ_COMMITTED)
           q2 = "SELECT * FROM karyawan WHERE id_karyawan = %s"
           await cursor.execute(q2, user["id_karyawan"])
           items2 = await cursor.fetchone()
@@ -699,22 +703,23 @@ async def check_out(
             f"Karyawan: {user['nama_karyawan']} Mengajukan Presensi Check Out"
           )
 
-          return {"status": "ok", "message": "Sukses Update Data Absensi"}
+          return {"status": STATUS_OK, "message": "Sukses Update Data Absensi"}
 
         except aiomysqlerror as e:
           await conn.rollback()
           return JSONResponse(
-            content={"status": "error", "message": f"Database Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"Database Error {str(e)}"},
             status_code=500,
           )
         except HTTPException as e:
           await conn.rollback()
           return JSONResponse(
-            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
 
   except Exception as e:
     return JSONResponse(
-      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
