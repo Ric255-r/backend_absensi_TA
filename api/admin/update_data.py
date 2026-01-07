@@ -158,7 +158,7 @@ async def update_konfigurasi(request: Request):
     )
 
 
-@app.put("/update_jadwal/{id_jadwal}")
+@app.put("/jadwal_kerja/{id_jadwal}")
 async def update_jadwal(id_jadwal: str, request: Request):
   try:
     pool = await get_db()
@@ -168,28 +168,24 @@ async def update_jadwal(id_jadwal: str, request: Request):
         try:
           # 1. Start Transaction
           await conn.begin()
+          payload = await request.json()
 
-          # 2. Execute querynya
-          key_field = ""
-          data = await request.json()
-          if "shift_mulai" in data:
-            key_field = "shift_mulai"
-          else:
-            key_field = "shift_selesai"
-
-          isi_waktu = data[key_field]
-
-          print(f"Isi Data {data}")
-
-          q1 = f"""
-            UPDATE jadwal_kerja SET {key_field} = %s where id_jadwal = %s 
+          q1 = """
+            UPDATE jadwal_kerja SET nama_shift = %s, shift_mulai = %s, shift_selesai = %s, hari_dalam_seminggu = %s
+            WHERE id_jadwal = %s
           """
-          q1_values = (isi_waktu, id_jadwal)
+          q1_values = (
+            payload["nama_shift"],
+            payload["shift_mulai"],
+            payload["shift_selesai"],
+            payload["hari_dalam_seminggu"],
+            id_jadwal,
+          )
           await cursor.execute(q1, q1_values)
           # 3. Klo Sukses, dia bkl save ke db
           await conn.commit()
 
-          return {"status": "ok", "message": "Sukses Simpan Data"}
+          return {"status": "ok", "message": "Sukses Update Data"}
 
         except aiomysqlerror as e:
           await conn.rollback()
