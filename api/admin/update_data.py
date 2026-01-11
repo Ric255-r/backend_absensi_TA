@@ -158,6 +158,52 @@ async def update_konfigurasi(request: Request):
     )
 
 
+@app.put("/update_departemen")
+async def update_departemen(request: Request):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          # 1. Start Transaction
+          await conn.begin()
+
+          # 2. Execute querynya
+          data = await request.json()
+          q1 = """
+            UPDATE departemen SET nama_departemen = %s
+            WHERE id_departemen = %s
+          """
+          q1_values = (
+            data["nama_departemen"],
+            data["id_departemen"],
+          )
+          await cursor.execute(q1, q1_values)
+          # 3. Klo Sukses, dia bkl save ke db
+          await conn.commit()
+
+          return {"status": "ok", "message": "Sukses Simpan Data"}
+
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error Error {str(e)}"},
+            status_code=e.status_code,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
+    )
+
+
 @app.put("/jadwal_kerja/{id_jadwal}")
 async def update_jadwal(id_jadwal: str, request: Request):
   try:

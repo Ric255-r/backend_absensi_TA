@@ -400,7 +400,10 @@ async def get_akun(request: Request):
 
 
 @app.get("/get_departemen")
-async def get_departemen(request: Request):
+async def get_departemen(
+  request: Request,
+  id_departemen: Optional[str] = Query(None),
+):
   try:
     pool = await get_db()
 
@@ -411,10 +414,18 @@ async def get_departemen(request: Request):
             "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
           )
 
-          q1 = """
-            SELECT * FROM departemen
+          baseWhere = ""
+          baseParams = []
+
+          if id_departemen:
+            baseWhere += " AND id_departemen = %s"
+            baseParams.append(id_departemen)
+
+          q1 = f"""
+            SELECT * FROM departemen WHERE 1=1 {baseWhere}
           """
-          await cursor.execute(q1)
+
+          await cursor.execute(q1, baseParams)
           items = await cursor.fetchall()
 
           return items
