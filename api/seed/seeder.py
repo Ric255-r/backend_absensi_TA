@@ -11,6 +11,8 @@ from services.seeders.helpers import (
   get_lateness_tolerance,
   insert_bulk_accounts,
   insert_bulk_attendance,
+  insert_bulk_hari_libur,
+  insert_bulk_master_shift,
   insert_bulk_employee_schedule,
   insert_bulk_employees,
 )
@@ -319,6 +321,52 @@ async def generate_dummy_accounts():
 
   # Call the helper function to insert the data
   result = await insert_bulk_accounts(account_data)
+
+  if result["status"] == "error":
+    raise HTTPException(status_code=500, detail=result["message"])
+
+  return result
+
+
+@app.post("/generate_dummy_master_shift")
+async def generate_dummy_master_shift():
+  master_shift_data = [
+    ("pagi", "08:00:00", "16:00:00", "Senin"),
+    ("sore", "13:00:00", "21:00:00", "Senin"),
+    ("pagi", "08:00:00", "16:00:00", "Selasa"),
+    ("sore", "13:00:00", "21:00:00", "Selasa"),
+    ("pagi", "08:00:00", "16:00:00", "Rabu"),
+    ("sore", "13:00:00", "21:00:00", "Rabu"),
+    ("pagi", "08:00:00", "16:00:00", "Kamis"),
+    ("sore", "13:00:00", "21:00:00", "Kamis"),
+    ("pagi", "08:00:00", "16:00:00", "Jumat"),
+    ("sore", "13:00:00", "21:00:00", "Jumat"),
+    ("pagi", "08:00:00", "16:00:00", "Sabtu"),
+    ("sore", "13:00:00", "21:00:00", "Sabtu"),
+  ]
+
+  result = await insert_bulk_master_shift(master_shift_data)
+
+  if result["status"] == "error":
+    raise HTTPException(status_code=500, detail=result["message"])
+
+  return result
+
+
+@app.post("/generate_dummy_hari_libur")
+async def generate_dummy_hari_libur():
+  holiday_data = [
+    ("2026-02-16", "Cuti Bersama Tahun Baru Imlek 2577 Kongzili", "cuti_bersama"),
+    ("2026-03-18", "Cuti Bersama Hari Suci Nyepi (Tahun Baru Saka 1948)", "cuti_bersama"),
+    ("2026-03-20", "Cuti Bersama Idul Fitri 1447 Hijriah", "cuti_bersama"),
+    ("2026-03-23", "Cuti Bersama Idul Fitri 1447 Hijriah", "cuti_bersama"),
+    ("2026-03-24", "Cuti Bersama Idul Fitri 1447 Hijriah", "cuti_bersama"),
+    ("2026-05-15", "Cuti Bersama Kenaikan Yesus Kristus", "cuti_bersama"),
+    ("2026-05-28", "Cuti Bersama Idul Adha 1447 Hijriah", "cuti_bersama"),
+    ("2026-12-24", "Cuti Bersama Kelahiran Yesus Kristus (Natal)", "cuti_bersama"),
+  ]
+
+  result = await insert_bulk_hari_libur(holiday_data)
 
   if result["status"] == "error":
     raise HTTPException(status_code=500, detail=result["message"])

@@ -268,3 +268,99 @@ async def insert_bulk_accounts(account_data: list):
       "message": f"Connection Error: {str(e)}",
       "inserted_count": 0,
     }
+
+
+async def insert_bulk_master_shift(master_shift_data: list):
+  """
+  Helper function to insert bulk jadwal_kerja data
+  :param master_shift_data: List of tuples containing master shift data
+  :return: Dictionary with status and message
+  """
+  try:
+    pool = await get_db()
+    total_records = len(master_shift_data)
+    inserted_count = 0
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          await conn.begin()
+
+          base_query = """
+              INSERT INTO `jadwal_kerja` (
+                  `nama_shift`, `shift_mulai`, `shift_selesai`, `hari_dalam_seminggu`
+              ) VALUES (%s, %s, %s, %s)
+          """
+
+          await cursor.executemany(base_query, master_shift_data)
+          inserted_count = total_records
+
+          await conn.commit()
+          return {
+            "status": "ok",
+            "message": f"Successfully inserted {inserted_count} master shift records",
+            "inserted_count": inserted_count,
+          }
+
+        except aiomysql.Error as e:
+          await conn.rollback()
+          return {
+            "status": "error",
+            "message": f"Database Error: {str(e)}",
+            "inserted_count": inserted_count,
+          }
+
+  except Exception as e:
+    return {
+      "status": "error",
+      "message": f"Connection Error: {str(e)}",
+      "inserted_count": 0,
+    }
+
+
+async def insert_bulk_hari_libur(holiday_data: list):
+  """
+  Helper function to insert bulk hari_libur data
+  :param holiday_data: List of tuples containing holiday data
+  :return: Dictionary with status and message
+  """
+  try:
+    pool = await get_db()
+    total_records = len(holiday_data)
+    inserted_count = 0
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          await conn.begin()
+
+          base_query = """
+              INSERT INTO `hari_libur` (
+                  `tanggal`, `keterangan`, `tipe`
+              ) VALUES (%s, %s, %s)
+          """
+
+          await cursor.executemany(base_query, holiday_data)
+          inserted_count = total_records
+
+          await conn.commit()
+          return {
+            "status": "ok",
+            "message": f"Successfully inserted {inserted_count} holiday records",
+            "inserted_count": inserted_count,
+          }
+
+        except aiomysql.Error as e:
+          await conn.rollback()
+          return {
+            "status": "error",
+            "message": f"Database Error: {str(e)}",
+            "inserted_count": inserted_count,
+          }
+
+  except Exception as e:
+    return {
+      "status": "error",
+      "message": f"Connection Error: {str(e)}",
+      "inserted_count": 0,
+    }
