@@ -121,7 +121,8 @@ async def get_data(
 
   except Exception as e:
     return JSONResponse(
-      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
     )
 
 
@@ -178,7 +179,8 @@ async def get_data_checkin(
 
   except Exception as e:
     return JSONResponse(
-      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
     )
 
 
@@ -239,7 +241,8 @@ async def get_data_checkout(
 
   except Exception as e:
     return JSONResponse(
-      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
     )
 
 
@@ -298,16 +301,18 @@ async def _get_schedule_and_time(pool: aiomysql.Pool, day_name: str, user_id: st
               jk.shift_mulai, 
               jk.shift_selesai,
               TIME(NOW()) as jam_skrg,
-              jk.nama_shift
-          FROM jadwal_kerja jk
-          JOIN karyawan k ON jk.nama_shift = k.kode_shift
-          WHERE jk.hari_dalam_seminggu = %s 
-          AND k.id_karyawan = %s
+              jmk.kode_shift
+          FROM jadwal_mingguan_karyawan jmk
+          JOIN jadwal_kerja jk 
+              ON jmk.kode_shift = jk.nama_shift 
+              AND jk.hari_dalam_seminggu = %s
+          WHERE jmk.id_karyawan = %s 
+          AND jmk.hari = %s
       """
-      await cursor.execute(q, (day_name, user_id))
-      data = await cursor.fetchone()
-      print(data)
-      return data
+
+      await cursor.execute(q, (day_name, user_id, day_name))
+      schedule_item = await cursor.fetchone()
+      return schedule_item
 
 
 def save_upload_file(upload: UploadFile, dest: str):
@@ -476,7 +481,8 @@ async def absen_hadir(
 
   except Exception as e:
     return JSONResponse(
-      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
     )
 
 
@@ -720,6 +726,6 @@ async def check_out(
 
   except Exception as e:
     return JSONResponse(
-      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"}, status_code=500
+      content={"status": STATUS_ERROR, "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
     )
-
