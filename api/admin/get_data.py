@@ -521,6 +521,61 @@ async def jadwal_kerja(request: Request):
     )
 
 
+@app.get("/jadwal_kerja_karyawan")
+async def jadwal_kerja_karyawan(
+  id_karyawan: Optional[str] = Query(None),
+):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          await cursor.execute(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;"
+          )
+
+          q1 = """
+            SELECT * FROM jadwal_mingguan_karyawan WHERE id_karyawan = %s
+          """
+          await cursor.execute(q1, (id_karyawan,))
+          dataArray = await cursor.fetchall()
+
+          print(dataArray)
+
+          return dataArray if dataArray else []
+        except (KeyError, TypeError) as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Payload tidak valid: {str(e)}"},
+            status_code=400,
+          )
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error {str(e)}"},
+            status_code=e.status_code,
+          )
+        except Exception as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Unexpected Error {str(e)}"},
+            status_code=500,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
+    )
+
+
 def excel_to_pdf(excel_path, pdf_path):
   excel = win32com.client.Dispatch("Excel.Application")
   excel.Visible = False  # Buat Excel Hidden
@@ -882,3 +937,39 @@ async def hari_libur(request: Request):
     return JSONResponse(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
+
+@app.get("/get_master_jadwal_config")
+async def get_master_jadwal_config():
+  pool = await get_db()
+  async with pool.acquire() as conn:
+    async with conn.cursor(aiomysql.DictCursor) as cursor:
+      # 1. Ambil Distinct Shift (Pagi, Sore, dll) dari tabel jadwal
+      # Kita format jamnya biar cantik di Frontend (08:00 - 16:00)
+      q_shift = """
+        SELECT DISTINCT 
+            nama_shift, 
+            TIME_FORMAT(shift_mulai, '%H:%i') as jam_masuk,
+            TIME_FORMAT(shift_selesai, '%H:%i') as jam_pulang
+        FROM jadwal_kerja
+        ORDER BY shift_mulai ASC
+      """
+      await cursor.execute(q_shift)
+      raw_shifts = await cursor.fetchall()
+
+      # 2. Ambil Distinct Hari (Kecuali Minggu, sesuai request bisnis)
+      # Kita gunakan FIELD untuk mengurutkan hari dengan benar (Senin dulu, bukan Alphabet)
+      q_hari = """
+          SELECT DISTINCT hari_dalam_seminggu as hari
+          FROM jadwal_kerja
+          WHERE hari_dalam_seminggu != 'Minggu'
+          ORDER BY FIELD(hari_dalam_seminggu, 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu')
+      """
+      await cursor.execute(q_hari)
+      raw_days = await cursor.fetchall()
+
+      return {
+        "status": "ok",
+        "shifts": raw_shifts,  # List shift dari DB
+        "days": [d["hari"] for d in raw_days],  # List hari ['Senin', 'Selasa'...]
+      }

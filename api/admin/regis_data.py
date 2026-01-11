@@ -256,3 +256,74 @@ async def regis_hari_libur(request: Request):
     return JSONResponse(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"}, status_code=500
     )
+
+
+@app.post("/regis_jadwal_karyawan")
+async def regis_jadwal_karyawan(request: Request):
+  try:
+    pool = await get_db()
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          await conn.begin()
+
+          payloads = await request.json()  # array of objects
+
+          if not isinstance(payloads, list) or len(payloads) == 0:
+            return JSONResponse(
+              content={
+                "status": "error",
+                "message": "Payload harus berupa array dan tidak boleh kosong",
+              },
+              status_code=400,
+            )
+
+          q1 = """
+            INSERT INTO jadwal_mingguan_karyawan (
+              id_karyawan, hari, kode_shift
+            )
+            VALUES(%s, %s, %s)
+          """
+
+          values = [(d["id_karyawan"], d["hari"], d["kode_shift"]) for d in payloads]
+
+          await cursor.executemany(q1, values)
+
+          await conn.commit()
+          return {
+            "status": "ok",
+            "message": "Sukses Simpan Data",
+            "inserted": cursor.rowcount,
+          }
+
+        except (KeyError, TypeError) as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Payload tidak valid: {str(e)}"},
+            status_code=400,
+          )
+        except aiomysqlerror as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Database Error {str(e)}"},
+            status_code=500,
+          )
+        except HTTPException as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"HTTP Error {str(e)}"},
+            status_code=e.status_code,
+          )
+        except Exception as e:
+          await conn.rollback()
+          return JSONResponse(
+            content={"status": "error", "message": f"Unexpected Error {str(e)}"},
+            status_code=500,
+          )
+
+  except Exception as e:
+    return JSONResponse(
+      content={"status": "error", "message": f"Koneksi Error {str(e)}"},
+      status_code=500,
+    )
