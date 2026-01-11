@@ -1,69 +1,21 @@
 import asyncio
 from datetime import timedelta
-import aiomysql
+import random
 from fastapi import APIRouter, HTTPException
 import pandas as pd
-from api.users.absensi import _get_lateness_tolerance
 from koneksi import get_db
-from aiomysql import Error as aiomysqlerror
-import random
+from services.seeders.helpers import (
+  get_employee_schedule_map,
+  get_employees,
+  get_master_shift_times,
+  get_lateness_tolerance,
+  insert_bulk_accounts,
+  insert_bulk_attendance,
+  insert_bulk_employee_schedule,
+  insert_bulk_employees,
+)
 
 app = APIRouter(prefix="/seed")
-
-
-# --- 1. Helper: Ambil Jadwal dengan Key (Hari, Shift) ---
-async def _get_master_shift_times(pool: aiomysql.Pool):
-  """
-  Mengambil jam masuk dari tabel jadwal_kerja.
-  Return Dict: { ('Senin', 'pagi'): timedelta(08:00:00), ... }
-  """
-  shift_times = {}
-  async with pool.acquire() as conn:
-    async with conn.cursor(aiomysql.DictCursor) as cursor:
-      # Mengambil kolom nama_shift juga
-      await cursor.execute(
-        "SELECT hari_dalam_seminggu, nama_shift, shift_mulai FROM jadwal_kerja"
-      )
-      rows = await cursor.fetchall()
-      for row in rows:
-        # Key-nya adalah Tuple (Hari, Shift)
-        key = (row["hari_dalam_seminggu"], row["nama_shift"])
-        shift_times[key] = row["shift_mulai"]
-  return shift_times
-
-
-# --- 2. Helper: Ambil Data Karyawan & Shift Mereka ---
-async def _get_employee_schedule_map(pool: aiomysql.Pool):
-  """
-  Mengambil jadwal spesifik karyawan dari tabel jadwal_mingguan_karyawan.
-  Return Dict: { ('K001', 'Senin'): 'pagi', ('K001', 'Selasa'): 'sore', ... }
-  """
-  emp_schedule_map = {}
-  async with pool.acquire() as conn:
-    async with conn.cursor(aiomysql.DictCursor) as cursor:
-      await cursor.execute(
-        "SELECT id_karyawan, hari, kode_shift FROM jadwal_mingguan_karyawan"
-      )
-      rows = await cursor.fetchall()
-      for row in rows:
-        # Key: (ID Karyawan, Hari Indo)
-        key = (row["id_karyawan"], row["hari"])
-        emp_schedule_map[key] = row["kode_shift"]
-  return emp_schedule_map
-
-
-# --- 2b. Helper: Ambil Data Karyawan untuk Absensi ---
-async def _get_employees(pool: aiomysql.Pool):
-  """
-  Mengambil data karyawan (tanpa shift).
-  Return List[Dict]: [{ "id": "K001", "foto": "..." }, ...]
-  """
-  async with pool.acquire() as conn:
-    async with conn.cursor(aiomysql.DictCursor) as cursor:
-      await cursor.execute(
-        "SELECT id_karyawan AS id, foto_profile AS foto FROM karyawan"
-      )
-      return await cursor.fetchall()
 
 
 # --- 3. Main Function ---
@@ -73,10 +25,10 @@ async def generate_dummy_attendance():
     pool = await get_db()
 
     # Eksekusi parallel untuk mempercepat
-    config_task = _get_lateness_tolerance(pool)
-    master_shift_task = _get_master_shift_times(pool)
-    employees_task = _get_employees(pool)
-    emp_schedule_task = _get_employee_schedule_map(pool)
+    config_task = get_lateness_tolerance(pool)
+    master_shift_task = get_master_shift_times(pool)
+    employees_task = get_employees(pool)
+    emp_schedule_task = get_employee_schedule_map(pool)
 
     config, master_shift_map, employees, emp_schedule_map = await asyncio.gather(
       config_task, master_shift_task, employees_task, emp_schedule_task
@@ -228,160 +180,6 @@ async def generate_dummy_attendance():
     raise HTTPException(status_code=500, detail=str(e))
 
 
-async def insert_bulk_attendance(attendance_data: list):
-  """
-  Helper function to insert bulk attendance data
-  :param attendance_data: List of tuples containing attendance data
-  :return: Dictionary with status and message
-  """
-  try:
-    pool = await get_db()
-    batch_size = 50  # Process 50 records at a time
-    total_records = len(attendance_data)
-    inserted_count = 0
-
-    async with pool.acquire() as conn:
-      async with conn.cursor(aiomysql.DictCursor) as cursor:
-        try:
-          await conn.begin()
-
-          # Prepare the base query
-          base_query = """
-            INSERT INTO `absensi` (
-                `id_karyawan`, `tanggal_absen`, `check_in`, `check_out`, 
-                `latitude_checkin`, `longitude_checkin`, `latitude_checkout`, `longitude_checkout`, 
-                `foto_checkin`, `foto_checkout`, `pengajuan`, `is_telat`, `status_absen`, `alasan_penolakan`
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-          """
-
-          # Process in batches
-          for i in range(0, total_records, batch_size):
-            batch = attendance_data[i : i + batch_size]
-            await cursor.executemany(base_query, batch)
-            inserted_count += len(batch)
-
-          await conn.commit()
-          return {
-            "status": "ok",
-            "message": f"Successfully inserted {inserted_count} attendance records",
-            "inserted_count": inserted_count,
-          }
-
-        except aiomysqlerror as e:
-          await conn.rollback()
-          return {
-            "status": "error",
-            "message": f"Database Error: {str(e)}",
-            "inserted_count": inserted_count,
-          }
-
-  except Exception as e:
-    return {
-      "status": "error",
-      "message": f"Connection Error: {str(e)}",
-      "inserted_count": 0,
-    }
-
-
-async def insert_bulk_employees(employee_data: list):
-  """
-  Helper function to insert bulk employee data
-  :param employee_data: List of tuples containing employee data
-  :return: Dictionary with status and message
-  """
-  try:
-    pool = await get_db()
-    total_records = len(employee_data)
-    inserted_count = 0
-
-    async with pool.acquire() as conn:
-      async with conn.cursor(aiomysql.DictCursor) as cursor:
-        try:
-          await conn.begin()
-
-          # Prepare the base query
-          base_query = """
-              INSERT INTO `karyawan` (
-                  `id_karyawan`, `nama_karyawan`, `email_karyawan`, `nomor_hp`, 
-                  `foto_profile`, `tanggal_rekrut`, `status`, `id_departemen`, `posisi`
-              ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-          """
-
-          # Insert all records at once
-          await cursor.executemany(base_query, employee_data)
-          inserted_count = total_records
-
-          await conn.commit()
-          return {
-            "status": "ok",
-            "message": f"Successfully inserted {inserted_count} employee records",
-            "inserted_count": inserted_count,
-          }
-
-        except aiomysql.Error as e:
-          await conn.rollback()
-          return {
-            "status": "error",
-            "message": f"Database Error: {str(e)}",
-            "inserted_count": inserted_count,
-          }
-
-  except Exception as e:
-    return {
-      "status": "error",
-      "message": f"Connection Error: {str(e)}",
-      "inserted_count": 0,
-    }
-
-
-async def insert_bulk_employee_schedule(schedule_data: list):
-  """
-  Helper function to insert bulk employee schedule data
-  :param schedule_data: List of tuples containing schedule data
-  :return: Dictionary with status and message
-  """
-  try:
-    pool = await get_db()
-    total_records = len(schedule_data)
-    inserted_count = 0
-
-    async with pool.acquire() as conn:
-      async with conn.cursor(aiomysql.DictCursor) as cursor:
-        try:
-          await conn.begin()
-
-          base_query = """
-              INSERT INTO `jadwal_mingguan_karyawan` (
-                  `id_karyawan`, `hari`, `kode_shift`
-              ) VALUES (%s, %s, %s)
-          """
-
-          await cursor.executemany(base_query, schedule_data)
-          inserted_count = total_records
-
-          await conn.commit()
-          return {
-            "status": "ok",
-            "message": f"Successfully inserted {inserted_count} schedule records",
-            "inserted_count": inserted_count,
-          }
-
-        except aiomysql.Error as e:
-          await conn.rollback()
-          return {
-            "status": "error",
-            "message": f"Database Error: {str(e)}",
-            "inserted_count": inserted_count,
-          }
-
-  except Exception as e:
-    return {
-      "status": "error",
-      "message": f"Connection Error: {str(e)}",
-      "inserted_count": 0,
-    }
-
-
 @app.post("/generate_dummy_employees")
 async def generate_dummy_employees():
   # List of employees with their data
@@ -458,57 +256,6 @@ async def generate_dummy_employees():
     "employee_inserted_count": result["inserted_count"],
     "schedule_inserted_count": schedule_result["inserted_count"],
   }
-
-
-async def insert_bulk_accounts(account_data: list):
-  """
-  Helper function to insert bulk account data
-  :param account_data: List of tuples containing account data
-  :return: Dictionary with status and message
-  """
-  try:
-    pool = await get_db()
-    total_records = len(account_data)
-    inserted_count = 0
-
-    async with pool.acquire() as conn:
-      async with conn.cursor(aiomysql.DictCursor) as cursor:
-        try:
-          await conn.begin()
-
-          # Prepare the base query
-          base_query = """
-              INSERT INTO `akun` (
-                  `username`, `passwd`, `roles`, `last_login`, 
-                  `id_karyawan`, `device_id`, `status`
-              ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-          """
-
-          # Insert all records at once
-          await cursor.executemany(base_query, account_data)
-          inserted_count = total_records
-
-          await conn.commit()
-          return {
-            "status": "ok",
-            "message": f"Successfully inserted {inserted_count} account records",
-            "inserted_count": inserted_count,
-          }
-
-        except aiomysql.Error as e:
-          await conn.rollback()
-          return {
-            "status": "error",
-            "message": f"Database Error: {str(e)}",
-            "inserted_count": inserted_count,
-          }
-
-  except Exception as e:
-    return {
-      "status": "error",
-      "message": f"Connection Error: {str(e)}",
-      "inserted_count": 0,
-    }
 
 
 @app.post("/generate_dummy_accounts")

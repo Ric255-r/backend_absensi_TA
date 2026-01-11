@@ -9,7 +9,7 @@ from api.admin.delete_data import app as app_delete_admin
 from api.users.absensi import app as app_absensi
 from api.users.absen_tidakhadir import app as app_tidakhadir
 from api.users.update_profile import app as app_profile_user
-from services.seeder import app as app_seeder
+from api.seed.seeder import app as app_seeder
 
 from koneksi import lifespan
 
