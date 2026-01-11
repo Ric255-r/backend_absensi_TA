@@ -12,13 +12,12 @@ app = APIRouter(prefix="/seed")
 
 
 # --- 1. Helper: Ambil Jadwal dengan Key (Hari, Shift) ---
-async def _get_schedule_map(pool: aiomysql.Pool):
+async def _get_master_shift_times(pool: aiomysql.Pool):
   """
-  Mengambil jadwal kerja.
-  Return Dictionary dengan Key Tuple: (hari, nama_shift) -> value: shift_mulai
-  Contoh: {('Senin', 'pagi'): 08:00:00, ('Senin', 'sore'): 13:00:00}
+  Mengambil jam masuk dari tabel jadwal_kerja.
+  Return Dict: { ('Senin', 'pagi'): timedelta(08:00:00), ... }
   """
-  schedule_map = {}
+  shift_times = {}
   async with pool.acquire() as conn:
     async with conn.cursor(aiomysql.DictCursor) as cursor:
       # Mengambil kolom nama_shift juga
@@ -29,33 +28,42 @@ async def _get_schedule_map(pool: aiomysql.Pool):
       for row in rows:
         # Key-nya adalah Tuple (Hari, Shift)
         key = (row["hari_dalam_seminggu"], row["nama_shift"])
-        schedule_map[key] = row["shift_mulai"]
-  return schedule_map
+        shift_times[key] = row["shift_mulai"]
+  return shift_times
 
 
 # --- 2. Helper: Ambil Data Karyawan & Shift Mereka ---
-async def _get_employees_with_shift(pool: aiomysql.Pool):
+async def _get_employee_schedule_map(pool: aiomysql.Pool):
   """
-  Mengambil list karyawan beserta shift yang assign ke mereka.
+  Mengambil jadwal spesifik karyawan dari tabel jadwal_mingguan_karyawan.
+  Return Dict: { ('K001', 'Senin'): 'pagi', ('K001', 'Selasa'): 'sore', ... }
   """
-  employees = []
+  emp_schedule_map = {}
   async with pool.acquire() as conn:
     async with conn.cursor(aiomysql.DictCursor) as cursor:
-      # Ambil id dan kode_shift
       await cursor.execute(
-        "SELECT id_karyawan, kode_shift FROM karyawan WHERE status = 'aktif'"
+        "SELECT id_karyawan, hari, kode_shift FROM jadwal_mingguan_karyawan"
       )
       rows = await cursor.fetchall()
       for row in rows:
-        # Kita assign foto dummy random atau berdasarkan ID
-        employees.append(
-          {
-            "id": row["id_karyawan"],
-            "shift": row["kode_shift"],
-            "foto": f"dummy_{row['id_karyawan']}.jpg",
-          }
-        )
-  return employees
+        # Key: (ID Karyawan, Hari Indo)
+        key = (row["id_karyawan"], row["hari"])
+        emp_schedule_map[key] = row["kode_shift"]
+  return emp_schedule_map
+
+
+# --- 2b. Helper: Ambil Data Karyawan untuk Absensi ---
+async def _get_employees(pool: aiomysql.Pool):
+  """
+  Mengambil data karyawan (tanpa shift).
+  Return List[Dict]: [{ "id": "K001", "foto": "..." }, ...]
+  """
+  async with pool.acquire() as conn:
+    async with conn.cursor(aiomysql.DictCursor) as cursor:
+      await cursor.execute(
+        "SELECT id_karyawan AS id, foto_profile AS foto FROM karyawan"
+      )
+      return await cursor.fetchall()
 
 
 # --- 3. Main Function ---
@@ -66,19 +74,22 @@ async def generate_dummy_attendance():
 
     # Eksekusi parallel untuk mempercepat
     config_task = _get_lateness_tolerance(pool)
-    schedule_task = _get_schedule_map(pool)
-    employees_task = _get_employees_with_shift(pool)
+    master_shift_task = _get_master_shift_times(pool)
+    employees_task = _get_employees(pool)
+    emp_schedule_task = _get_employee_schedule_map(pool)
 
-    config, schedule_map, employees = await asyncio.gather(
-      config_task, schedule_task, employees_task
+    config, master_shift_map, employees, emp_schedule_map = await asyncio.gather(
+      config_task, master_shift_task, employees_task, emp_schedule_task
     )
 
     if not config:
       raise HTTPException(status_code=500, detail="Config Kosong")
-    if not schedule_map:
+    if not master_shift_map:
       raise HTTPException(status_code=500, detail="Jadwal Kosong")
     if not employees:
       raise HTTPException(status_code=500, detail="Data Karyawan Kosong")
+    if not emp_schedule_map:
+      raise HTTPException(status_code=500, detail="Jadwal Karyawan Kosong")
 
     lateness_tolerance_minutes = config["toleransi_terlambat"]
 
@@ -131,18 +142,23 @@ async def generate_dummy_attendance():
     # Loop per Karyawan
     for emp in employees:
       emp_id = emp["id"]
-      emp_shift = emp["shift"]  # 'pagi' atau 'sore'
       foto = foto_by_emp_id.get(emp_id, emp["foto"])
 
-      # Cari Jadwal spesifik untuk (Hari Ini + Shift Karyawan Ini)
+      # Cari shift spesifik karyawan untuk hari ini
+      emp_schedule_key = (emp_id, indo_day)
+      if emp_schedule_key not in emp_schedule_map:
+        continue
+      emp_shift = emp_schedule_map[emp_schedule_key]  # 'pagi' atau 'sore'
+
+      # Cari Jadwal master untuk (Hari Ini + Shift Karyawan Ini)
       schedule_key = (indo_day, emp_shift)
 
       # Jika tidak ada jadwal (misal Minggu atau shift pagi libur di hari Jumat), skip
-      if schedule_key not in schedule_map:
+      if schedule_key not in master_shift_map:
         continue
 
       # Jam mulai shift (timedelta)
-      shift_start_delta = schedule_map[schedule_key]
+      shift_start_delta = master_shift_map[schedule_key]
 
       # Waktu dasar masuk (Misal: 08:00 atau 13:00)
       base_shift_time = date_obj + shift_start_delta
@@ -318,31 +334,81 @@ async def insert_bulk_employees(employee_data: list):
     }
 
 
+async def insert_bulk_employee_schedule(schedule_data: list):
+  """
+  Helper function to insert bulk employee schedule data
+  :param schedule_data: List of tuples containing schedule data
+  :return: Dictionary with status and message
+  """
+  try:
+    pool = await get_db()
+    total_records = len(schedule_data)
+    inserted_count = 0
+
+    async with pool.acquire() as conn:
+      async with conn.cursor(aiomysql.DictCursor) as cursor:
+        try:
+          await conn.begin()
+
+          base_query = """
+              INSERT INTO `jadwal_mingguan_karyawan` (
+                  `id_karyawan`, `hari`, `kode_shift`
+              ) VALUES (%s, %s, %s)
+          """
+
+          await cursor.executemany(base_query, schedule_data)
+          inserted_count = total_records
+
+          await conn.commit()
+          return {
+            "status": "ok",
+            "message": f"Successfully inserted {inserted_count} schedule records",
+            "inserted_count": inserted_count,
+          }
+
+        except aiomysql.Error as e:
+          await conn.rollback()
+          return {
+            "status": "error",
+            "message": f"Database Error: {str(e)}",
+            "inserted_count": inserted_count,
+          }
+
+  except Exception as e:
+    return {
+      "status": "error",
+      "message": f"Connection Error: {str(e)}",
+      "inserted_count": 0,
+    }
+
+
 @app.post("/generate_dummy_employees")
 async def generate_dummy_employees():
   # List of employees with their data
   employees = [
-    (1, "marifal safarido"),
-    (2, "habta"),
-    (3, "fadli nurhidayat"),
-    (4, "devrian prayasa"),
-    (5, "sitti aisyah"),
-    (6, "putri zahrah"),
-    (7, "aldi"),
-    (8, "faril"),
-    (9, "uray dhea"),
-    (10, "ira riani"),
-    (11, "rifky"),
-    (12, "hansen"),
-    (13, "endarta"),
-    (14, "valencia tiara sari"),
-    (15, "aditya aprilianto"),
+    (1, "marifal safarido", 6, "Staff", "pagi"),
+    (2, "habta", 6, "Staff", "pagi"),
+    (3, "fadli nurhidayat", 6, "Staff", "sore"),
+    (4, "devrian prayasa", 6, "Staff", "sore"),
+    (5, "sitti aisyah", 6, "Kasir", "pagi"),
+    (6, "putri zahrah", 6, "Kasir", "sore"),
+    (7, "aldi", 2, "Staff", "pagi"),
+    (8, "faril", 2, "Staff", "sore"),
+    (9, "uray dhea", 2, "Kasir", "pagi"),
+    (10, "ira riani", 2, "Kasir", "sore"),
+    (11, "rifky", 1, "Staff", "pagi"),
+    (12, "hansen", 1, "Staff", "pagi"),
+    (13, "endarta", 1, "Staff", "sore"),
+    (14, "valencia tiara sari", 4, "Kasir", "pagi"),
+    (15, "aditya aprilianto", 4, "Kasir", "sore"),
   ]
 
   employee_data = []
+  schedule_data = []
+  schedule_days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
 
   # Generate data for each employee
-  for urutan, nama in employees:
+  for urutan, nama, id_departemen, posisi, kode_shift in employees:
     # Format employee ID
     emp_id = f"K{urutan:03d}"  # Format: K001, K002, etc.
 
@@ -361,10 +427,19 @@ async def generate_dummy_employees():
         "",  # foto_profile (empty string)
         "2025-01-15",  # tanggal_rekrut (fixed date)
         "aktif",  # status
-        1,  # id_departemen (default to 1)
-        "Staff",  # posisi (default to Staff)
+        id_departemen,  # id_departemen (default to 1)
+        posisi,  # posisi (default to Staff)
       )
     )
+
+    for hari in schedule_days:
+      schedule_data.append(
+        (
+          emp_id,  # id_karyawan
+          hari,  # hari
+          kode_shift,  # kode_shift
+        )
+      )
 
   # Call the helper function to insert the data
   result = await insert_bulk_employees(employee_data)
@@ -372,7 +447,17 @@ async def generate_dummy_employees():
   if result["status"] == "error":
     raise HTTPException(status_code=500, detail=result["message"])
 
-  return result
+  schedule_result = await insert_bulk_employee_schedule(schedule_data)
+
+  if schedule_result["status"] == "error":
+    raise HTTPException(status_code=500, detail=schedule_result["message"])
+
+  return {
+    "status": "ok",
+    "message": "Successfully inserted employee and schedule records",
+    "employee_inserted_count": result["inserted_count"],
+    "schedule_inserted_count": schedule_result["inserted_count"],
+  }
 
 
 async def insert_bulk_accounts(account_data: list):
