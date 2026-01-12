@@ -372,23 +372,64 @@ async def absen_hadir(
     async with pool.acquire() as conn:
       async with conn.cursor(aiomysql.DictCursor) as cursor:
         try:
+          lock_name = f"absensi_checkin_{user['id_karyawan']}"
+          await cursor.execute("SELECT GET_LOCK(%s, 10) AS got_lock", (lock_name,))
+          lock_row = await cursor.fetchone()
+          if not lock_row or lock_row.get("got_lock") != 1:
+            return JSONResponse(
+              content={
+                "status": STATUS_ERROR,
+                "message": "Proses check-in sedang berlangsung. Coba lagi.",
+              },
+              status_code=409,
+            )
+
           # 1. Start Transaction
           await conn.begin()
 
-          q1 = """
-            INSERT INTO absensi (
-              id_karyawan, tanggal_absen, check_in, 
-              latitude_checkin, longitude_checkin, foto_checkin
-            )
-            VALUES(%s, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), %s, %s, %s)
+          q_exists = """
+            SELECT id_absensi
+            FROM absensi
+            WHERE id_karyawan = %s
+              AND DATE(check_in) = DATE(CURRENT_TIMESTAMP())
+            ORDER BY id_absensi DESC
+            LIMIT 1
+            FOR UPDATE
           """
-          q1_values = (
-            user["id_karyawan"],
-            data["latitude_checkin"],
-            data["longitude_checkin"],
-            filename,
-          )
-          await cursor.execute(q1, q1_values)
+          await cursor.execute(q_exists, (user["id_karyawan"],))
+          existing_row = await cursor.fetchone()
+
+          if existing_row:
+            q1 = """
+              UPDATE absensi
+              SET check_in = CURRENT_TIMESTAMP(),
+                  latitude_checkin = %s,
+                  longitude_checkin = %s,
+                  foto_checkin = %s
+              WHERE id_absensi = %s
+            """
+            q1_values = (
+              data["latitude_checkin"],
+              data["longitude_checkin"],
+              filename,
+              existing_row["id_absensi"],
+            )
+            await cursor.execute(q1, q1_values)
+          else:
+            q1 = """
+              INSERT INTO absensi (
+                id_karyawan, tanggal_absen, check_in, 
+                latitude_checkin, longitude_checkin, foto_checkin
+              )
+              VALUES(%s, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), %s, %s, %s)
+            """
+            q1_values = (
+              user["id_karyawan"],
+              data["latitude_checkin"],
+              data["longitude_checkin"],
+              filename,
+            )
+            await cursor.execute(q1, q1_values)
 
           # fetch data jam skrg, ini msh bentuk time atau timedelta.
           # timedelta(hours=3) akan menjadi 3:00:00.
@@ -478,6 +519,11 @@ async def absen_hadir(
             content={"status": STATUS_ERROR, "message": f"HTTP Error Error {str(e)}"},
             status_code=e.status_code,
           )
+        finally:
+          try:
+            await cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
+          except Exception:
+            pass
 
   except Exception as e:
     return JSONResponse(
