@@ -21,7 +21,9 @@ import win32com.client
 from pywintypes import com_error
 from utils.fn_log import logger
 
+
 app = APIRouter(prefix="/admin")
+EXCEL_PASSWORD = "ChangeMe123!"
 
 # Ini dari User ke Admin
 absensi_connection = []
@@ -631,6 +633,23 @@ def excel_to_pdf(excel_path, pdf_path):
       excel.Quit()
 
 
+def protect_excel_with_password(excel_path, password):
+  excel = win32com.client.Dispatch("Excel.Application")
+  excel.Visible = False
+  excel.DisplayAlerts = False
+
+  try:
+    wb = excel.Workbooks.Open(os.path.abspath(excel_path))
+    wb.SaveAs(os.path.abspath(excel_path), FileFormat=51, Password=password)
+  except com_error as e:
+    print(f"Protection failed: {e}")
+  finally:
+    if "wb" in locals() and wb:
+      wb.Close(SaveChanges=False)
+    if excel:
+      excel.Quit()
+
+
 def formatStrDate(params: str):
   tgl = params.split("-")
   formatted_tgl = tgl[2] + "-" + tgl[1] + "-" + tgl[0]
@@ -873,11 +892,29 @@ async def exportExcel(
             ws.column_dimensions[column_letter].width = adjusted_width
 
           # --- 8. Save and Return the File ---
+          wb.security.lockStructure = True
+          wb.security.workbookPassword = EXCEL_PASSWORD
+
+          for sheet in wb.worksheets:
+            sheet.protection.sheet = True
+            sheet.protection.set_password(EXCEL_PASSWORD)
+            sheet.protection.formatCells = False
+            sheet.protection.formatColumns = False
+            sheet.protection.formatRows = False
+            sheet.protection.insertColumns = False
+            sheet.protection.insertRows = False
+            sheet.protection.insertHyperlinks = False
+            sheet.protection.deleteColumns = False
+            sheet.protection.deleteRows = False
+            sheet.protection.sort = False
+            sheet.protection.autoFilter = False
+
           file_path = "data_absensi_harian.xlsx"
           if os.path.exists(file_path):
             os.chmod(file_path, 0o644)  # Make writable to overwrite
 
           wb.save(file_path)
+          protect_excel_with_password(file_path, EXCEL_PASSWORD)
           os.chmod(file_path, 0o444)  # Set back to read-only
 
           log_message = "SELESAI GENERATE EXCEL REKAPITULASI"
