@@ -52,6 +52,7 @@ HTTP_OK = 200
 HTTP_BAD_REQUEST = 400
 HTTP_INTERNAL_SERVER_ERROR = 500
 TIPE_CUTI_BERSAMA = "cuti_bersama"
+PENGAJUAN_TIDAKHADIR = TIPE_CUTI + (TIPE_CUTI_BERSAMA,) + ("sakit", "izin")
 
 
 @app.get("/foto_tidakhadir/{filename}")
@@ -82,14 +83,45 @@ async def get_data(
 
             # Return dalam bentuk dict
             items = await cursor.fetchall()
+            return items
           else:
-            q1 = "SELECT * FROM pengajuan_absen WHERE MONTH(tanggal_mulai) = %s and YEAR(tanggal_mulai) = %s and id_karyawan = %s"
-            await cursor.execute(q1, (month, year, user["id_karyawan"]))
+            # Kita ambil langsung dari pengajuan_absen karena sudah memiliki range
+            q1 = """
+              SELECT 
+                tipe_pengajuan AS tipe,
+                tanggal_mulai AS tgl_start,
+                tanggal_akhir AS tgl_end,
+                status,
+                foto_lampiran,
+                keterangan,
+                alasan_penolakan
+              FROM pengajuan_absen 
+              WHERE id_karyawan = %s 
+                AND (MONTH(tanggal_mulai) = %s OR MONTH(tanggal_akhir) = %s)
+                AND (YEAR(tanggal_mulai) = %s OR YEAR(tanggal_akhir) = %s)
+                AND tipe_pengajuan IN %s
+              ORDER BY tanggal_mulai DESC
+            """
+            await cursor.execute(
+              q1, (user["id_karyawan"], month, month, year, year, PENGAJUAN_TIDAKHADIR)
+            )
 
-            # Return dalam bentuk dict
             items = await cursor.fetchall()
 
-          return items
+            # Pastikan format datetime dikonversi ke string agar tidak error saat JSON serialize
+            for item in items:
+              item["tgl_start"] = (
+                item["tgl_start"].isoformat()
+                if isinstance(item["tgl_start"], (date, datetime))
+                else item["tgl_start"]
+              )
+              item["tgl_end"] = (
+                item["tgl_end"].isoformat()
+                if isinstance(item["tgl_end"], (date, datetime))
+                else item["tgl_end"]
+              )
+
+            return items
         except aiomysqlerror as e:
           return JSONResponse(
             content={
@@ -132,10 +164,6 @@ async def store_data(
           await conn.begin()
           data = await request.form()
 
-          # --- VALIDASI KOUTA CUTI ---
-          # sesuaikan tipe yang dihitung sebagai cuti
-          tipe_yang_dihitung_cuti = ("liburan", "izin", "cuti")
-
           # 2. Ambil tipe yang diajukan user dari payload
           tipe_diajukan_user = data.get("tipe_pengajuan")
 
@@ -147,7 +175,7 @@ async def store_data(
             )
 
           # 3. HANYA jalankan validasi JIKA tipe yang diajukan termasuk yang dihitung
-          if tipe_diajukan_user in tipe_yang_dihitung_cuti:
+          if tipe_diajukan_user in TIPE_CUTI:
             # 4. Panggil validasi. Perhatikan:
             #    Parameter 'tipe_dianggap_cuti' TETAP berisi SEMUA tipe yg dihitung,
             #    bukan hanya 'tipe_diajukan_user'.
@@ -156,7 +184,7 @@ async def store_data(
               id_karyawan=user["id_karyawan"],
               tanggal_mulai=data["tanggal_mulai"],
               tanggal_akhir=data["tanggal_akhir"],
-              tipe_dianggap_cuti=tipe_yang_dihitung_cuti,  # <-- Tetap pakai ini
+              tipe_dianggap_cuti=TIPE_CUTI,  # <-- Tetap pakai ini
               tahan_pending=True,
               lock_config=True,
             )
@@ -334,13 +362,12 @@ async def get_summary_cuti_saya(
         try:
           # Tentukan tipe apa saja yang dihitung sebagai cuti
           # (Harus sama dengan yang di 'store_data')
-          tipe_cuti = ("liburan", "izin", "cuti")
 
           # Panggil fungsi summary yang sudah ada
           summary = await get_cuti_summary(
             cursor,
             id_karyawan=user["id_karyawan"],
-            tipe_dianggap_cuti=tipe_cuti,
+            tipe_dianggap_cuti=TIPE_CUTI,
             tahan_pending=True,  # Tampilkan sisa RIL (termasuk pending)
             lock_config=False,  # PENTING: 'False' saat hanya GET/baca data
           )
@@ -380,7 +407,7 @@ async def get_summary_cuti_saya(
 async def get_cuti_summary(
   cursor: aiomysql.DictCursor,
   id_karyawan: str,
-  tipe_dianggap_cuti: Iterable[str] = ("liburan", "izin"),
+  tipe_dianggap_cuti: Iterable[str] = TIPE_CUTI,
   tahan_pending: bool = True,
   lock_config: bool = False,
 ) -> Dict[str, Any]:
@@ -497,7 +524,7 @@ async def validate_cuti_request(
   id_karyawan: str,
   tanggal_mulai: Union[str, date],
   tanggal_akhir: Union[str, date],
-  tipe_dianggap_cuti: Iterable[str] = ("liburan", "izin"),
+  tipe_dianggap_cuti: Iterable[str] = TIPE_CUTI,
   tahan_pending: bool = True,
   lock_config: bool = True,
 ) -> Dict[str, Any]:
