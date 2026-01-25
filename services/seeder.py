@@ -106,14 +106,17 @@ async def generate_dummy_attendance():
   ]
 
   # Date range: July 1 to July 25, 2025
-  start_date = pd.Timestamp("2025-07-01")
-  end_date = pd.Timestamp("2025-07-25")
+  start_date = pd.Timestamp("2025-12-01")
+  end_date = pd.Timestamp("2025-12-31")
   date_range = pd.date_range(start_date, end_date)
 
   attendance_data = []
 
   # Generate data for each employee for each date
   for date in date_range:
+    # Skip Sundays (Monday=0 ... Sunday=6)
+    if date.weekday() == 6:
+      continue
     for emp_id, foto in employee_attendance_data:
       # Format the date strings
       date_str = date.strftime("%Y-%m-%d")
