@@ -101,6 +101,14 @@ async def get_konfigurasi():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
+@router.get("/hari_libur")
+async def get_hari_libur():
+  try:
+    return await admin_controller.get_hari_libur()
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
 @router.put("/update_karyawan")
 async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest):
   try:

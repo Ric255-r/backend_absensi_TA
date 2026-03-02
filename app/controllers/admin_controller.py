@@ -2,6 +2,7 @@
 from datetime import date, datetime, time
 
 from fastapi import HTTPException
+from tortoise import Tortoise
 
 from app.models import Akun, Departemen, JadwalKerja, Karyawan, KonfigurasiAplikasi
 from app.schemas.requests.admin import (
@@ -118,6 +119,11 @@ async def get_konfigurasi():
     "id_pengaturan", "toleransi_terlambat", "maks_hari_cuti"
   )
   return items[0] if items else None
+
+
+async def get_hari_libur():
+  conn = Tortoise.get_connection("default")
+  return await conn.execute_query_dict("SELECT * FROM hari_libur")
 
 
 async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest) -> dict:
