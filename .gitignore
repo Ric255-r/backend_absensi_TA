@@ -2,3 +2,5 @@ jwt_auth.py
 koneksi_config.txt
 admin_info.log
 user_info.log
+__pycache__/
+*.pyc

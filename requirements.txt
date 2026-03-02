@@ -1,0 +1,16 @@
+aiofiles==24.1.0
+aiomysql==0.2.0
+fastapi==0.111.1
+fastapi-jwt==0.3.0
+authlib==1.6.8
+numpy==1.24.4
+openpyxl==3.1.5
+pandas==2.0.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+python-multipart==0.0.9
+pywin32==310
+starlette==0.37.2
+tortoise-orm==0.25.1
+aerich==0.8.2
+uvicorn==0.30.3

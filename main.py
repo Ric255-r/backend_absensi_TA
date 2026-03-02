@@ -1,20 +1,21 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
+from fastapi import APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from services.login import app as app_karyawan
-from api.admin.regis_data import app as app_regis
-from api.admin.get_data import app as app_get_data
-from api.admin.update_pengajuan import app as app_update_pengajuan
-from api.admin.update_data import app as app_update_admin
-from api.admin.delete_data import app as app_delete_admin
-from api.users.absensi import app as app_absensi
-from api.users.absen_tidakhadir import app as app_tidakhadir
-from api.users.update_profile import app as app_profile_user
-from services.seeder import app as app_seeder
 
-from koneksi import lifespan
+from app.core.database import init_tortoise
+from app.routers import api_router
+from api_legacy.admin.delete_data import app as legacy_delete_admin
+from api_legacy.admin.get_data import app as legacy_get_data
+from api_legacy.admin.regis_data import app as legacy_regis
+from api_legacy.admin.update_data import app as legacy_update_admin
+from api_legacy.admin.update_pengajuan import app as legacy_update_pengajuan
+from api_legacy.users.absen_tidakhadir import app as legacy_tidakhadir
+from api_legacy.users.absensi import app as legacy_absensi
+from api_legacy.users.update_profile import app as legacy_profile_user
+from services.login import app as legacy_login
+from services.seeder import app as legacy_seeder
 
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 app.add_middleware(
   CORSMiddleware,
   allow_origins=["*"],  # or specify list like ["http://localhost:5173"]
@@ -23,21 +24,22 @@ app.add_middleware(
   allow_headers=["*"],
 )
 
-main_router = APIRouter()
+init_tortoise(app)
+app.include_router(api_router)
 
-main_router.include_router(app_karyawan)
-main_router.include_router(app_regis)
-main_router.include_router(app_absensi)
-main_router.include_router(app_tidakhadir)
-main_router.include_router(app_get_data)
-main_router.include_router(app_update_pengajuan)
-main_router.include_router(app_delete_admin)
-main_router.include_router(app_update_admin)
-main_router.include_router(app_profile_user)
-main_router.include_router(app_seeder)
-
-# masukkan main router ke fastapi app
-app.include_router(main_router, prefix="/api")
+# Legacy compatibility during migration to Tortoise ORM architecture.
+legacy_router = APIRouter(prefix="/api/legacy")
+legacy_router.include_router(legacy_login)
+legacy_router.include_router(legacy_regis)
+legacy_router.include_router(legacy_absensi)
+legacy_router.include_router(legacy_tidakhadir)
+legacy_router.include_router(legacy_get_data)
+legacy_router.include_router(legacy_update_pengajuan)
+legacy_router.include_router(legacy_delete_admin)
+legacy_router.include_router(legacy_update_admin)
+legacy_router.include_router(legacy_profile_user)
+legacy_router.include_router(legacy_seeder)
+app.include_router(legacy_router)
 
 # bawaan default
 if __name__ == "__main__":

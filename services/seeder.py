@@ -1,7 +1,7 @@
 import aiomysql
 from fastapi import APIRouter, HTTPException
 import pandas as pd
-from api.users.absensi import _get_lateness_tolerance
+from api_legacy.users.absensi import _get_lateness_tolerance
 from koneksi import get_db
 from aiomysql import Error as aiomysqlerror
 import random
