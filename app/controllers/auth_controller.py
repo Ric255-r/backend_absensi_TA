@@ -101,9 +101,10 @@ async def get_current_user(
     "status",
     "device_id",
     "last_login",
-    "karyawan_id",
+    "karyawan_id", # underscore cukup 1x utk source_field OneToOne, kalau banyak underscore itu buat akses field dari relasi
     "karyawan__nama_karyawan",
     "karyawan__foto_profile",
+    "karyawan__email_karyawan",
   )
   item = item[0] if item else None
 

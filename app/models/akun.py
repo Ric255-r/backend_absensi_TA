@@ -12,7 +12,7 @@ class Akun(Model):
   karyawan = fields.OneToOneField(
     "models.Karyawan",
     related_name="akun",
-    source_field="id_karyawan",
+    source_field="id_karyawan", # kalau PK ini jadikan source_field, tortoise akan baca aja sbg id tok.
     on_delete=fields.CASCADE,
   )
 
