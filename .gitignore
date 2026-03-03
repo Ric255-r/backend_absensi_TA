@@ -4,3 +4,5 @@ admin_info.log
 user_info.log
 __pycache__/
 *.pyc
+.venv_absensi
+api_legacy
