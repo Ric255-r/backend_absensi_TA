@@ -105,6 +105,7 @@ async def get_current_user(
     "karyawan__nama_karyawan",
     "karyawan__foto_profile",
     "karyawan__email_karyawan",
+    "karyawan__nomor_hp",
   )
   item = item[0] if item else None
 
