@@ -281,12 +281,11 @@ async def store_check_out_attendance(
       tanggal_absen__gte=day_start,
       tanggal_absen__lt=day_end,
       karyawan_id=user["id_karyawan"],
-    ).update(
+    ).using_db(db).update(
       check_out=now,
       latitude_checkout=payload.latitude_checkout,
       longitude_checkout=payload.longitude_checkout,
       foto_checkout=filename,
-      using_db=db,
     )
 
   data_karyawan_rows = await Karyawan.filter(id_karyawan=user["id_karyawan"]).limit(1).values(
