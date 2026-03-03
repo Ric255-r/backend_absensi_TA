@@ -1,14 +1,22 @@
-﻿import hashlib
-from datetime import date, datetime, time
+import hashlib
+from datetime import date, time
 
 from fastapi import HTTPException
-from tortoise import Tortoise
 
-from app.models import Akun, Departemen, JadwalKerja, Karyawan, KonfigurasiAplikasi
+from app.models import (
+  Akun,
+  Departemen,
+  HariLibur,
+  JadwalKerja,
+  Karyawan,
+  KonfigurasiAplikasi,
+)
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
   DepartemenCreateRequest,
+  HariLiburCreateRequest,
+  HariLiburUpdateRequest,
   JadwalUpdateRequest,
   KaryawanCreateRequest,
   KaryawanUpdateRequest,
@@ -48,6 +56,15 @@ async def regis_akun(payload: AkunCreateRequest) -> dict:
 
 async def regis_departemen(payload: DepartemenCreateRequest) -> dict:
   await Departemen.create(nama_departemen=payload.nama_departemen)
+  return {"status": "ok", "message": "Sukses Simpan Data"}
+
+
+async def regis_hari_libur(payload: HariLiburCreateRequest) -> dict:
+  await HariLibur.create(
+    tanggal=date.fromisoformat(payload.tanggal),
+    keterangan=payload.keterangan,
+    tipe=payload.tipe,
+  )
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
@@ -122,8 +139,9 @@ async def get_konfigurasi():
 
 
 async def get_hari_libur():
-  conn = Tortoise.get_connection("default")
-  return await conn.execute_query_dict("SELECT * FROM hari_libur")
+  return await HariLibur.all().order_by("tanggal").values(
+    "id_libur", "tanggal", "keterangan", "tipe"
+  )
 
 
 async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest) -> dict:
@@ -193,6 +211,18 @@ async def update_jadwal(id_jadwal: int, payload: JadwalUpdateRequest) -> dict:
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
+async def update_hari_libur(id_libur: int, payload: HariLiburUpdateRequest) -> dict:
+  updated = await HariLibur.filter(id_libur=id_libur).update(
+    tanggal=date.fromisoformat(payload.tanggal),
+    keterangan=payload.keterangan,
+    tipe=payload.tipe,
+  )
+  if updated == 0:
+    raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
+
+  return {"status": "ok", "message": "Sukses Update Data"}
+
+
 async def unbind_device(username: str) -> dict:
   updated = await Akun.filter(username=username).update(device_id=None)
   if updated == 0:
@@ -218,4 +248,11 @@ async def delete_departemen(id_departemen: int) -> dict:
   deleted = await Departemen.filter(id_departemen=id_departemen).delete()
   if deleted == 0:
     raise HTTPException(status_code=404, detail="Data departemen tidak ditemukan")
+  return {"status": "ok", "message": "Sukses Delete Data"}
+
+
+async def delete_hari_libur(id_libur: int) -> dict:
+  deleted = await HariLibur.filter(id_libur=id_libur).delete()
+  if deleted == 0:
+    raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
   return {"status": "ok", "message": "Sukses Delete Data"}

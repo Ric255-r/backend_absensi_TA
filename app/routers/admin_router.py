@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.controllers import admin_controller
@@ -6,11 +6,14 @@ from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
   DepartemenCreateRequest,
+  HariLiburCreateRequest,
+  HariLiburUpdateRequest,
   JadwalUpdateRequest,
   KaryawanCreateRequest,
   KaryawanUpdateRequest,
   KonfigurasiUpdateRequest,
 )
+from app.schemas.responses import APIMessage, HariLiburResponse
 from jwt_auth import verify_jwt
 
 router = APIRouter(
@@ -20,7 +23,7 @@ router = APIRouter(
 )
 
 
-@router.post("/regis_karyawan")
+@router.post("/regis_karyawan", response_model=APIMessage)
 async def regis_karyawan(payload: KaryawanCreateRequest):
   try:
     return await admin_controller.regis_karyawan(payload)
@@ -31,7 +34,7 @@ async def regis_karyawan(payload: KaryawanCreateRequest):
     )
 
 
-@router.post("/regis_akun")
+@router.post("/regis_akun", response_model=APIMessage)
 async def regis_akun(payload: AkunCreateRequest):
   try:
     return await admin_controller.regis_akun(payload)
@@ -42,7 +45,7 @@ async def regis_akun(payload: AkunCreateRequest):
     )
 
 
-@router.post("/regis_departemen")
+@router.post("/regis_departemen", response_model=APIMessage)
 async def regis_departemen(payload: DepartemenCreateRequest):
   try:
     return await admin_controller.regis_departemen(payload)
@@ -51,6 +54,18 @@ async def regis_departemen(payload: DepartemenCreateRequest):
       content={"status": "error", "message": str(e)},
       status_code=500,
     )
+
+
+@router.post("/hari_libur", response_model=APIMessage)
+async def regis_hari_libur(payload: HariLiburCreateRequest):
+  try:
+    return await admin_controller.regis_hari_libur(payload)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
 @router.get("/get_karyawan")
@@ -101,7 +116,7 @@ async def get_konfigurasi():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/hari_libur")
+@router.get("/hari_libur", response_model=list[HariLiburResponse])
 async def get_hari_libur():
   try:
     return await admin_controller.get_hari_libur()
@@ -109,82 +124,121 @@ async def get_hari_libur():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.put("/update_karyawan")
+@router.put("/update_karyawan", response_model=APIMessage)
 async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest):
   try:
     return await admin_controller.update_karyawan(id_karyawan, payload)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.put("/update_akun")
+@router.put("/update_akun", response_model=APIMessage)
 async def update_akun(username: str, payload: AkunUpdateRequest):
   try:
     return await admin_controller.update_akun(username, payload)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.put("/update_konfigurasi")
+@router.put("/update_konfigurasi", response_model=APIMessage)
 async def update_konfigurasi(id_pengaturan: int, payload: KonfigurasiUpdateRequest):
   try:
     return await admin_controller.update_konfigurasi(id_pengaturan, payload)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.put("/update_jadwal/{id_jadwal}")
+@router.put("/update_jadwal/{id_jadwal}", response_model=APIMessage)
 async def update_jadwal(id_jadwal: int, payload: JadwalUpdateRequest):
   try:
     return await admin_controller.update_jadwal(id_jadwal, payload)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.put("/unbind_device/{username}")
+@router.put("/hari_libur/{id_libur}", response_model=APIMessage)
+async def update_hari_libur(id_libur: int, payload: HariLiburUpdateRequest):
+  try:
+    return await admin_controller.update_hari_libur(id_libur, payload)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.put("/unbind_device/{username}", response_model=APIMessage)
 async def unbind_device(username: str):
   try:
     return await admin_controller.unbind_device(username)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.delete("/delete_karyawan/{id_karyawan}")
+@router.delete("/delete_karyawan/{id_karyawan}", response_model=APIMessage)
 async def delete_karyawan(id_karyawan: str):
   try:
     return await admin_controller.delete_karyawan(id_karyawan)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.delete("/delete_akun/{username}")
+@router.delete("/delete_akun/{username}", response_model=APIMessage)
 async def delete_akun(username: str):
   try:
     return await admin_controller.delete_akun(username)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.delete("/delete_departemen/{id_departemen}")
+@router.delete("/delete_departemen/{id_departemen}", response_model=APIMessage)
 async def delete_departemen(id_departemen: int):
   try:
     return await admin_controller.delete_departemen(id_departemen)
   except HTTPException as e:
-    return JSONResponse(content={"status": "error", "message": e.detail}, status_code=e.status_code)
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
+
+@router.delete("/hari_libur/{id_libur}", response_model=APIMessage)
+async def delete_hari_libur(id_libur: int):
+  try:
+    return await admin_controller.delete_hari_libur(id_libur)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)

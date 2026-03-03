@@ -1,4 +1,6 @@
-﻿from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel
 
 
 class KaryawanCreateRequest(BaseModel):
@@ -49,3 +51,15 @@ class KonfigurasiUpdateRequest(BaseModel):
 class JadwalUpdateRequest(BaseModel):
   shift_mulai: str | None = None
   shift_selesai: str | None = None
+
+
+class HariLiburCreateRequest(BaseModel):
+  tanggal: str
+  keterangan: str
+  tipe: Literal["libur_nasional", "cuti_bersama"]
+
+
+class HariLiburUpdateRequest(BaseModel):
+  tanggal: str
+  keterangan: str
+  tipe: Literal["libur_nasional", "cuti_bersama"]
