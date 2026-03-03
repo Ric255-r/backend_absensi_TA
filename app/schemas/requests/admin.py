@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -63,3 +63,10 @@ class HariLiburUpdateRequest(BaseModel):
   tanggal: str
   keterangan: str
   tipe: Literal["libur_nasional", "cuti_bersama"]
+
+class UpdateStatusAbsensiRequest(BaseModel):
+  status_absen: str
+  alasan_penolakan: str | None = None
+  id_karyawan: str
+  id_absensi: int
+  updated_bulk_data: list[dict] | None = None

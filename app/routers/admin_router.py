@@ -12,6 +12,7 @@ from app.schemas.requests.admin import (
   KaryawanCreateRequest,
   KaryawanUpdateRequest,
   KonfigurasiUpdateRequest,
+  UpdateStatusAbsensiRequest,
 )
 from app.schemas.responses import APIMessage, HariLiburResponse
 from jwt_auth import verify_jwt
@@ -188,6 +189,17 @@ async def update_hari_libur(id_libur: int, payload: HariLiburUpdateRequest):
 async def unbind_device(username: str):
   try:
     return await admin_controller.unbind_device(username)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+  
+@router.put("/update_status_absensi", response_model=APIMessage)
+async def update_status_absensi(payload: UpdateStatusAbsensiRequest):
+  try:
+    return await admin_controller.update_status_absensi(payload)
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code

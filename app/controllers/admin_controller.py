@@ -1,5 +1,6 @@
 import hashlib
 from datetime import date, time
+import json
 
 from fastapi import HTTPException
 
@@ -11,6 +12,7 @@ from app.models import (
   Karyawan,
   KonfigurasiAplikasi,
 )
+from app.models.absensi import Absensi
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
@@ -21,7 +23,10 @@ from app.schemas.requests.admin import (
   KaryawanCreateRequest,
   KaryawanUpdateRequest,
   KonfigurasiUpdateRequest,
+  UpdateStatusAbsensiRequest,
 )
+from utils.fn_log import logger
+from app.realtime.absensi_ws import admin_to_user_conn
 
 
 async def regis_karyawan(payload: KaryawanCreateRequest) -> dict:
@@ -221,6 +226,64 @@ async def update_hari_libur(id_libur: int, payload: HariLiburUpdateRequest) -> d
     raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
 
   return {"status": "ok", "message": "Sukses Update Data"}
+
+async def update_status_absensi(
+  payload: UpdateStatusAbsensiRequest,
+  is_bulk: bool = False,
+):
+  # print ku sementara buat pengganti log_message yang ada di legacy.
+  if is_bulk and payload.updated_bulk_data:
+    for item in payload.updated_bulk_data:
+      if item.get("status_absen") == "rejected":
+        print("Alasan Penolakan:", item.get("alasan_penolakan", "Tidak ada alasan yang diberikan"))
+        log_message = (
+          f"Karyawan [{item.get('id_karyawan')}] Sudah Di Reject. Skipped From Bulk"
+        )
+        logger.info(log_message)
+        continue
+
+      await Absensi.filter(id_absensi=item["id_absensi"], karyawan_id=item["id_karyawan"]).update(
+        status_absen=item["status_absen"],
+        alasan_penolakan=item.get("alasan_penolakan", None),
+      )
+      log_message = (
+        f"ADMIN  MENGUPDATE STATUS ABSENSI untuk Karyawan [{item['id_karyawan']}] "
+        f"menjadi [{item['status_absen']}]"
+      )
+      logger.info(log_message)
+
+      for ws_con in admin_to_user_conn:
+        await ws_con.send_text(
+          json.dumps(
+            {
+              "id_karyawan": item["id_karyawan"],
+              "status": item["status_absen"],
+              "message": f"Absen Anda di{item['status_absen']}",
+            }
+          )
+        )
+  else:
+    await Absensi.filter(id_absensi=payload.id_absensi, karyawan_id=payload.id_karyawan).update(
+      status_absen=payload.status_absen,
+      alasan_penolakan=payload.alasan_penolakan if payload.alasan_penolakan else None,
+    )
+    log_message = (
+      f"ADMIN  MENGUPDATE STATUS ABSENSI untuk Karyawan [{payload.id_karyawan}] "
+      f"menjadi [{payload.status_absen}]"
+    )
+    logger.info(log_message)
+    for ws_con in admin_to_user_conn:
+      await ws_con.send_text(
+        json.dumps(
+          {
+            "id_karyawan": payload.id_karyawan,
+            "status": payload.status_absen,
+            "message": f"Absen Anda di{payload.status_absen}",
+          }
+        )
+      )
+      
+  return {"status": "ok", "message": "Sukses Update Status Absensi"}
 
 
 async def unbind_device(username: str) -> dict:
