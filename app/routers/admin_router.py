@@ -126,6 +126,21 @@ async def get_hari_libur():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
+@router.get("/export_excel")
+async def export_excel(
+  start_date: str | None = Query(None),
+  end_date: str | None = Query(None),
+):
+  try:
+    return await admin_controller.export_excel(start_date=start_date, end_date=end_date)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
 @router.put("/update_karyawan", response_model=APIMessage)
 async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest):
   try:

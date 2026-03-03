@@ -1,8 +1,17 @@
 import hashlib
+import os
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 import json
 
 from fastapi import HTTPException
+from fastapi.responses import FileResponse
+from openpyxl import Workbook
+from openpyxl.cell import MergedCell
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles.protection import SheetProtection
+from openpyxl.utils import get_column_letter
+from openpyxl.workbook.protection import WorkbookProtection
 
 from app.models import (
   Akun,
@@ -149,6 +158,209 @@ async def get_konfigurasi():
 async def get_hari_libur():
   return await HariLibur.all().order_by("tanggal").values(
     "id_libur", "tanggal", "keterangan", "tipe"
+  )
+
+
+def _format_str_date(params: str) -> str:
+  tgl = params.split("-")
+  return f"{tgl[2]}-{tgl[1]}-{tgl[0]}"
+
+
+def _format_indonesian_date(date_obj: date) -> str:
+  days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+  months = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ]
+  day_name = days[date_obj.weekday()]
+  month_name = months[date_obj.month - 1]
+  return f"{day_name}, {date_obj.day} {month_name} {date_obj.year}"
+
+
+def _bulan_indo(month: str) -> str:
+  months = {
+    "01": "Januari",
+    "02": "Februari",
+    "03": "Maret",
+    "04": "April",
+    "05": "Mei",
+    "06": "Juni",
+    "07": "Juli",
+    "08": "Agustus",
+    "09": "September",
+    "10": "Oktober",
+    "11": "November",
+    "12": "Desember",
+  }
+  return months.get(month, "")
+
+
+async def export_excel(start_date: str | None = None, end_date: str | None = None):
+  logger.info("PROSES GENERATE EXCEL REKAPITULASI")
+
+  query = Absensi.all()
+  periode_laporan = ""
+
+  if start_date and end_date:
+    start_d = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_d = datetime.strptime(end_date, "%Y-%m-%d").date()
+    if end_d < start_d:
+      raise HTTPException(status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai")
+    periode_laporan = f"{_format_str_date(start_date)} s/d {_format_str_date(end_date)}"
+    start_dt = datetime.combine(start_d, time.min)
+    end_dt = datetime.combine(end_d + timedelta(days=1), time.min)
+    query = query.filter(tanggal_absen__gte=start_dt, tanggal_absen__lt=end_dt)
+  elif start_date:
+    start_d = datetime.strptime(start_date, "%Y-%m-%d").date()
+    periode_laporan = (
+      _bulan_indo(start_date.split("-")[1]) + " Tahun " + str(start_d.year)
+    ).upper()
+    query = query.filter(tanggal_absen__month=start_d.month)
+  else:
+    now = datetime.now()
+    periode_laporan = f"Bulan {_bulan_indo(f'{now.month:02d}')} {now.year}"
+    query = query.filter(tanggal_absen__month=now.month, tanggal_absen__year=now.year)
+
+  all_data = await query.order_by("tanggal_absen", "karyawan__nama_karyawan").values(
+    "tanggal_absen",
+    "karyawan__nama_karyawan",
+    "karyawan__posisi",
+    "check_in",
+    "check_out",
+    "pengajuan",
+    "is_telat",
+    "status_absen",
+    "alasan_penolakan",
+  )
+
+  if not all_data:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Tidak ada data absensi untuk periode {periode_laporan}",
+    )
+
+  grouped_data: dict[date, list[dict]] = defaultdict(list)
+  for row in all_data:
+    grouped_data[row["tanggal_absen"].date()].append(row)
+
+  wb = Workbook()
+  ws = wb.active
+  ws.title = "Laporan Absensi"
+
+  ws.merge_cells("A1:I1")
+  corp_cell = ws["A1"]
+  corp_cell.value = "CV BENGKEL TEKNOLOGI INDONESIA"
+  corp_cell.alignment = Alignment(horizontal="center", vertical="center")
+  corp_cell.font = Font(bold=True, size=16)
+
+  ws.merge_cells("A2:I2")
+  ket_cell = ws["A2"]
+  ket_cell.value = f"LAPORAN ABSENSI PERIODE {periode_laporan}"
+  ket_cell.alignment = Alignment(horizontal="center", vertical="center")
+  ket_cell.font = Font(bold=True, size=14)
+
+  ws.append([""])
+
+  column_headers = [
+    "No",
+    "Nama Karyawan",
+    "Posisi",
+    "Absen Masuk",
+    "Absen Keluar",
+    "Pengajuan",
+    "Terlambat",
+    "Status Absen",
+    "Alasan Penolakan",
+  ]
+
+  for date_key in sorted(grouped_data.keys()):
+    records_for_the_day = grouped_data[date_key]
+
+    current_row = ws.max_row + 1
+    ws.merge_cells(f"A{current_row}:I{current_row}")
+    date_header_cell = ws[f"A{current_row}"]
+    date_header_cell.value = _format_indonesian_date(date_key)
+    date_header_cell.font = Font(bold=True, size=12)
+    date_header_cell.alignment = Alignment(horizontal="left")
+
+    ws.append(column_headers)
+    header_row = ws[ws.max_row]
+    for cell in header_row:
+      cell.font = Font(bold=True)
+      cell.alignment = Alignment(horizontal="center", vertical="center")
+      cell.fill = PatternFill(start_color="D3D3D3", fill_type="solid")
+      cell.border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+      )
+
+    for i, record in enumerate(records_for_the_day, 1):
+      is_telat_str = "Ya" if record.get("is_telat") == 1 else "Tidak"
+      row_data = [
+        i,
+        record.get("karyawan__nama_karyawan") or "-",
+        record.get("karyawan__posisi") or "-",
+        record["check_in"].time() if record.get("check_in") else "-",
+        record["check_out"].time() if record.get("check_out") else "-",
+        record.get("pengajuan") or "-",
+        is_telat_str,
+        record.get("status_absen") or "-",
+        record.get("alasan_penolakan") or "-",
+      ]
+      ws.append(row_data)
+
+    ws.append([""])
+
+  for col_idx, column in enumerate(ws.columns, 1):
+    column_letter = get_column_letter(col_idx)
+    max_length = 0
+    for cell in column:
+      if isinstance(cell, MergedCell):
+        continue
+      if cell.value is None:
+        continue
+      max_length = max(max_length, len(str(cell.value)))
+
+    adjusted_width = (max_length + 2) * 1.2
+    if col_idx == 1:
+      adjusted_width = 5
+    ws.column_dimensions[column_letter].width = adjusted_width
+
+  excel_password = "1234"
+  ws.protection = SheetProtection(sheet=True)
+  ws.protection.set_password(excel_password)
+  ws.protection.selectLockedCells = False
+  ws.protection.selectUnlockedCells = False
+  ws.protection.enable()
+
+  wb.security = WorkbookProtection(lockStructure=True)
+  wb.security.set_workbook_password(excel_password)
+
+  file_path = "data_absensi_harian.xlsx"
+  if os.path.exists(file_path):
+    os.chmod(file_path, 0o644)
+
+  wb.save(file_path)
+  os.chmod(file_path, 0o444)
+
+  logger.info("SELESAI GENERATE EXCEL REKAPITULASI")
+
+  return FileResponse(
+    os.path.abspath(file_path),
+    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    filename="laporan_absensi_harian.xlsx",
   )
 
 
