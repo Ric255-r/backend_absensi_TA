@@ -1,7 +1,8 @@
-﻿from typing import Optional
+﻿import os
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Security
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi_jwt import JwtAuthorizationCredentials
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
@@ -12,8 +13,12 @@ from jwt_auth import access_security
 
 router = APIRouter(prefix="/absen", tags=["Absensi"])
 
-LATITUDE_BENGKOM = -0.0615419
-LONGITUDE_BENGKOM = 109.3961217
+LATITUDE_BENGKOM = -0.0544064
+LONGITUDE_BENGKOM = 109.3732664
+FOTO_CHECKIN = "api_legacy/images/foto_checkin"
+FOTO_CHECKOUT = "api_legacy/images/foto_checkout"
+MEDIA_TYPE_PNG = "image/png"
+
 # # Original Lokasi Bengkel Teknologi Indonesia
 # # Jl Gusti Hamzah No 6C Pontianak, Kalimantan Barat
 # LATITUDE_BENGKOM = -0.03020289202263597
@@ -21,6 +26,16 @@ LONGITUDE_BENGKOM = 109.3961217
 @router.get("/get_lokasi_bengkom")
 def get_lokasi_bengkom():
   return {"latitude_bengkom": LATITUDE_BENGKOM, "longitude_bengkom": LONGITUDE_BENGKOM}
+
+@router.get("/foto_checkin/{filename}")
+def get_foto_checkin(filename: str):
+  img_path = os.path.join(FOTO_CHECKIN, filename)
+  return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
+
+@router.get("/foto_checkout/{filename}")
+def get_foto_checkout(filename: str):
+  img_path = os.path.join(FOTO_CHECKOUT, filename)
+  return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
 
 @router.get("/my_absen")
 async def get_my_absen(
