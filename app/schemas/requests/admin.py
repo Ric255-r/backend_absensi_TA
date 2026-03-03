@@ -70,3 +70,13 @@ class UpdateStatusAbsensiRequest(BaseModel):
   id_karyawan: str
   id_absensi: int
   updated_bulk_data: list[dict] | None = None
+
+
+class UpdatePengajuanRequest(BaseModel):
+  id_pengajuan: int
+  id_karyawan: str
+  status: str
+  tipe_pengajuan: str
+  tanggal_mulai: str
+  tanggal_akhir: str
+  alasan_penolakan: str | None = None

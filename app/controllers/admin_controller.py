@@ -1,5 +1,5 @@
 import hashlib
-from datetime import date, time
+from datetime import date, datetime, time, timedelta
 import json
 
 from fastapi import HTTPException
@@ -11,6 +11,7 @@ from app.models import (
   JadwalKerja,
   Karyawan,
   KonfigurasiAplikasi,
+  PengajuanAbsen,
 )
 from app.models.absensi import Absensi
 from app.schemas.requests.admin import (
@@ -23,10 +24,12 @@ from app.schemas.requests.admin import (
   KaryawanCreateRequest,
   KaryawanUpdateRequest,
   KonfigurasiUpdateRequest,
+  UpdatePengajuanRequest,
   UpdateStatusAbsensiRequest,
 )
 from utils.fn_log import logger
 from app.realtime.absensi_ws import admin_to_user_conn
+from tortoise.transactions import in_transaction
 
 
 async def regis_karyawan(payload: KaryawanCreateRequest) -> dict:
@@ -284,6 +287,100 @@ async def update_status_absensi(
       )
       
   return {"status": "ok", "message": "Sukses Update Status Absensi"}
+
+
+def _daterange_inclusive(d1: date, d2: date):
+  cur = d1
+  while cur <= d2:
+    yield cur
+    cur += timedelta(days=1)
+
+
+async def update_pengajuan(payload: UpdatePengajuanRequest) -> dict:
+  async with in_transaction() as db:
+    if payload.alasan_penolakan is not None:
+      updated = await PengajuanAbsen.filter(
+        id_pengajuan=payload.id_pengajuan,
+        karyawan_id=payload.id_karyawan,
+      ).using_db(db).update(
+        status=payload.status,
+        alasan_penolakan=payload.alasan_penolakan,
+      )
+      if updated == 0:
+        raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
+
+    elif payload.status == "approved":
+      start_d = datetime.strptime(payload.tanggal_mulai, "%Y-%m-%d").date()
+      end_d = datetime.strptime(payload.tanggal_akhir, "%Y-%m-%d").date()
+
+      if end_d < start_d:
+        raise HTTPException(status_code=400, detail="Tanggal Akhir < Tanggal Mulai")
+
+      days_in_range = list(_daterange_inclusive(start_d, end_d))
+      day_start = datetime.combine(start_d, time.min)
+      day_end = datetime.combine(end_d + timedelta(days=1), time.min)
+
+      existing_rows = await Absensi.filter(
+        karyawan_id=payload.id_karyawan,
+        tanggal_absen__gte=day_start,
+        tanggal_absen__lt=day_end,
+      ).using_db(db).values("id_absensi", "tanggal_absen")
+      existing_dates = {row["tanggal_absen"].date(): row["id_absensi"] for row in existing_rows}
+
+      for current_date in days_in_range:
+        absensi_id = existing_dates.get(current_date)
+        if absensi_id:
+          await Absensi.filter(id_absensi=absensi_id).using_db(db).update(
+            status_absen=payload.status
+          )
+          continue
+
+        check_in_date = datetime.combine(current_date, time.min)
+        await Absensi.create(
+          karyawan_id=payload.id_karyawan,
+          tanggal_absen=check_in_date,
+          check_in=check_in_date,
+          latitude_checkin=0.0,
+          longitude_checkin=0.0,
+          foto_checkin="no-foto",
+          pengajuan=payload.tipe_pengajuan,
+          status_absen=payload.status,
+          using_db=db,
+        )
+
+      updated = await PengajuanAbsen.filter(
+        id_pengajuan=payload.id_pengajuan,
+        karyawan_id=payload.id_karyawan,
+      ).using_db(db).update(status=payload.status)
+      if updated == 0:
+        raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
+
+    else:
+      updated = await PengajuanAbsen.filter(
+        id_pengajuan=payload.id_pengajuan,
+        karyawan_id=payload.id_karyawan,
+      ).using_db(db).update(status=payload.status)
+      if updated == 0:
+        raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
+
+  log_message = (
+    f"ADMIN MENGUPDATE STATUS PENGAJUAN untuk Karyawan [{payload.id_karyawan}] "
+    f"menjadi [{payload.status}]"
+  )
+  logger.info(log_message)
+
+  for ws_con in admin_to_user_conn:
+    await ws_con.send_text(
+      json.dumps(
+        {
+          "id_karyawan": payload.id_karyawan,
+          "status": payload.status,
+          "message": f"Pengajuan Anda telah di-{payload.status}",
+        }
+      )
+    )
+
+  return {"status": "ok", "message": "Sukses Update Pengajuan"}
 
 
 async def unbind_device(username: str) -> dict:

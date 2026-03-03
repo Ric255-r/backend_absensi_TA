@@ -12,6 +12,7 @@ from app.schemas.requests.admin import (
   KaryawanCreateRequest,
   KaryawanUpdateRequest,
   KonfigurasiUpdateRequest,
+  UpdatePengajuanRequest,
   UpdateStatusAbsensiRequest,
 )
 from app.schemas.responses import APIMessage, HariLiburResponse
@@ -200,6 +201,18 @@ async def unbind_device(username: str):
 async def update_status_absensi(payload: UpdateStatusAbsensiRequest):
   try:
     return await admin_controller.update_status_absensi(payload)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.put("/update_pengajuan", response_model=APIMessage)
+async def update_pengajuan(payload: UpdatePengajuanRequest):
+  try:
+    return await admin_controller.update_pengajuan(payload)
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code
