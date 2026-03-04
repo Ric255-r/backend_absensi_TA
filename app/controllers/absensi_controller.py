@@ -11,7 +11,14 @@ from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from app.core.serializer import serialize_data
-from app.models import Absensi, JadwalKerja, Karyawan, KonfigurasiAplikasi
+from app.models import (
+  Absensi,
+  HariLibur,
+  JadwalKerja,
+  JadwalMingguanKaryawan,
+  Karyawan,
+  KonfigurasiAplikasi,
+)
 from app.models.pengajuan_absen import PengajuanAbsen
 from app.realtime.absensi_ws import absensi_connections
 from app.schemas.requests.absensi import CheckInRequest, CheckOutRequest
@@ -24,6 +31,8 @@ MESSAGE_ALREADY_CHECKIN = "Anda Sudah Checkin"
 MESSAGE_ALREADY_CHECKOUT = "Anda Sudah CheckOut"
 MESSAGE_NO_CHECKIN = "Belum Ada Checkin"
 MESSAGE_NO_CHECKOUT = "Belum Ada Checkout"
+MESSAGE_NO_CHECKIN_FOR_CHECKOUT = "Belum Ada Checkin"
+MESSAGE_HOLIDAY = "Hari ini adalah hari libur. Checkin tidak tersedia."
 
 
 def _day_bounds(dt: datetime) -> tuple[datetime, datetime]:
@@ -138,6 +147,10 @@ async def validate_check_in_attendance(
     & Q(status="approved")
   ).exists()
 
+  is_holiday = await HariLibur.filter(tanggal=now.date()).exists()
+  if is_holiday:
+    raise HTTPException(status_code=403, detail=MESSAGE_HOLIDAY)
+
   if bool(has_checkin) or bool(in_pengajuan):
     raise HTTPException(
       status_code=403,
@@ -190,6 +203,39 @@ async def _get_db_day_and_time() -> tuple[str, time]:
   return day_rows[0]["hari_ini"], _normalize_db_time(time_rows[0]["jam_skrg"])
 
 
+async def _get_shift_start_time_for_employee(
+  id_karyawan: str,
+  day_name_indo: str,
+) -> time:
+  weekly_schedule = await JadwalMingguanKaryawan.filter(
+    karyawan_id=id_karyawan,
+    hari=day_name_indo,
+  ).limit(1)
+  weekly_schedule = weekly_schedule[0] if weekly_schedule else None
+  if not weekly_schedule:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Jadwal mingguan untuk hari {day_name_indo} tidak ditemukan",
+    )
+
+  schedule = await JadwalKerja.filter(
+    hari_dalam_seminggu=day_name_indo,
+    nama_shift=weekly_schedule.kode_shift,
+  ).limit(1)
+  schedule = schedule[0] if schedule else None
+
+  if not schedule or not schedule.shift_mulai:
+    raise HTTPException(
+      status_code=404,
+      detail=(
+        f"Jadwal kerja untuk hari {day_name_indo} "
+        f"dengan shift {weekly_schedule.kode_shift} tidak ditemukan"
+      ),
+    )
+
+  return _normalize_db_time(schedule.shift_mulai)
+
+
 async def store_check_in_attendance(
   payload: CheckInRequest,
   photo: UploadFile,
@@ -197,7 +243,6 @@ async def store_check_in_attendance(
   user: JwtAuthorizationCredentials,
 ) -> dict:
   now = datetime.now()
-  day_start, day_end = _day_bounds(now)
   day_name_indo, db_now_time = await _get_db_day_and_time()
 
   config_rows = await KonfigurasiAplikasi.all().order_by("id_pengaturan").limit(1)
@@ -205,16 +250,15 @@ async def store_check_in_attendance(
   if not config:
     raise HTTPException(status_code=500, detail="Konfigurasi aplikasi tidak ditemukan")
 
-  schedule_rows = await JadwalKerja.filter(hari_dalam_seminggu=day_name_indo).limit(1)
-  schedule = schedule_rows[0] if schedule_rows else None
-  if not schedule or not schedule.shift_mulai:
-    raise HTTPException(
-      status_code=404,
-      detail=f"Jadwal kerja untuk hari {day_name_indo} tidak ditemukan",
-    )
+  is_holiday = await HariLibur.filter(tanggal=now.date()).exists()
+  if is_holiday:
+    raise HTTPException(status_code=403, detail=MESSAGE_HOLIDAY)
 
-  # MySQL TIME dapat terbaca sebagai timedelta; normalisasi dulu ke datetime.time.
-  shift_mulai_time = _normalize_db_time(schedule.shift_mulai)
+  shift_mulai_time = await _get_shift_start_time_for_employee(
+    id_karyawan=user["id_karyawan"],
+    day_name_indo=day_name_indo,
+  )
+
   batas_waktu_checkin = datetime.combine(now.date(), shift_mulai_time) + timedelta(
     minutes=config.toleransi_terlambat
   )
@@ -277,7 +321,7 @@ async def store_check_out_attendance(
   os.makedirs(FOTO_CHECKOUT, exist_ok=True)
 
   async with in_transaction() as db:
-    await Absensi.filter(
+    updated = await Absensi.filter(
       tanggal_absen__gte=day_start,
       tanggal_absen__lt=day_end,
       karyawan_id=user["id_karyawan"],
@@ -287,6 +331,8 @@ async def store_check_out_attendance(
       longitude_checkout=payload.longitude_checkout,
       foto_checkout=filename,
     )
+    if updated == 0:
+      raise HTTPException(status_code=404, detail=MESSAGE_NO_CHECKIN_FOR_CHECKOUT)
 
   data_karyawan_rows = await Karyawan.filter(id_karyawan=user["id_karyawan"]).limit(1).values(
     "id_karyawan", "nama_karyawan"
