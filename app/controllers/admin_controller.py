@@ -51,10 +51,14 @@ def _resolve_analytics_range(
   today = date.today()
   resolved_end = date.fromisoformat(end_date) if end_date else today
   resolved_start = (
-    date.fromisoformat(start_date) if start_date else (resolved_end - timedelta(days=29))
+    date.fromisoformat(start_date)
+    if start_date
+    else (resolved_end - timedelta(days=29))
   )
   if resolved_end < resolved_start:
-    raise HTTPException(status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai")
+    raise HTTPException(
+      status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai"
+    )
   return resolved_start, resolved_end
 
 
@@ -105,17 +109,21 @@ async def regis_hari_libur(payload: HariLiburCreateRequest) -> dict:
 async def get_karyawan(id_karyawan: str | None = None):
   query = Karyawan.all()
   if id_karyawan:
-    items = await query.filter(id_karyawan=id_karyawan).limit(1).values(
-      "id_karyawan",
-      "nama_karyawan",
-      "email_karyawan",
-      "nomor_hp",
-      "foto_profile",
-      "tanggal_rekrut",
-      "status",
-      "posisi",
-      "departemen_id",
-      "departemen__nama_departemen",
+    items = (
+      await query.filter(id_karyawan=id_karyawan)
+      .limit(1)
+      .values(
+        "id_karyawan",
+        "nama_karyawan",
+        "email_karyawan",
+        "nomor_hp",
+        "foto_profile",
+        "tanggal_rekrut",
+        "status",
+        "posisi",
+        "departemen_id",
+        "departemen__nama_departemen",
+      )
     )
     return items[0] if items else None
   return await query.values(
@@ -135,13 +143,17 @@ async def get_karyawan(id_karyawan: str | None = None):
 async def get_akun(username: str | None = None):
   query = Akun.all()
   if username:
-    items = await query.filter(username=username).limit(1).values(
-      "username",
-      "roles",
-      "status",
-      "last_login",
-      "device_id",
-      "karyawan_id",
+    items = (
+      await query.filter(username=username)
+      .limit(1)
+      .values(
+        "username",
+        "roles",
+        "status",
+        "last_login",
+        "device_id",
+        "karyawan_id",
+      )
     )
     item = items[0] if items else None
     return [item] if item else []
@@ -166,15 +178,20 @@ async def get_jadwal():
 
 
 async def get_konfigurasi():
-  items = await KonfigurasiAplikasi.all().order_by("id_pengaturan").limit(1).values(
-    "id_pengaturan", "toleransi_terlambat", "maks_hari_cuti"
+  items = (
+    await KonfigurasiAplikasi.all()
+    .order_by("id_pengaturan")
+    .limit(1)
+    .values("id_pengaturan", "toleransi_terlambat", "maks_hari_cuti")
   )
   return items[0] if items else None
 
 
 async def get_hari_libur():
-  return await HariLibur.all().order_by("tanggal").values(
-    "id_libur", "tanggal", "keterangan", "tipe"
+  return (
+    await HariLibur.all()
+    .order_by("tanggal")
+    .values("id_libur", "tanggal", "keterangan", "tipe")
   )
 
 
@@ -184,17 +201,21 @@ async def get_data_dashboard(tgl: str | None = None):
   day_end = day_start + timedelta(days=1)
 
   total_karyawan = await Karyawan.filter(status="aktif").count()
-  total_karyawan_rows = await Karyawan.filter(status="aktif").order_by("nama_karyawan").values(
-    "id_karyawan",
-    "nama_karyawan",
-    "email_karyawan",
-    "nomor_hp",
-    "foto_profile",
-    "tanggal_rekrut",
-    "status",
-    "posisi",
-    "departemen_id",
-    "departemen__nama_departemen",
+  total_karyawan_rows = (
+    await Karyawan.filter(status="aktif")
+    .order_by("nama_karyawan")
+    .values(
+      "id_karyawan",
+      "nama_karyawan",
+      "email_karyawan",
+      "nomor_hp",
+      "foto_profile",
+      "tanggal_rekrut",
+      "status",
+      "posisi",
+      "departemen_id",
+      "departemen__nama_departemen",
+    )
   )
   total_karyawan_list = [
     {
@@ -217,26 +238,30 @@ async def get_data_dashboard(tgl: str | None = None):
     tanggal_absen__gte=day_start,
     tanggal_absen__lt=day_end,
   ).count()
-  absen_pending_rows = await Absensi.filter(
-    status_absen="pending",
-    tanggal_absen__gte=day_start,
-    tanggal_absen__lt=day_end,
-  ).order_by("-tanggal_absen").values(
-    "id_absensi",
-    "id_karyawan",
-    "tanggal_absen",
-    "check_in",
-    "check_out",
-    "pengajuan",
-    "status_absen",
-    "karyawan__nama_karyawan",
-    "karyawan__email_karyawan",
-    "karyawan__nomor_hp",
-    "karyawan__foto_profile",
-    "karyawan__tanggal_rekrut",
-    "karyawan__status",
-    "karyawan__posisi",
-    "karyawan__departemen_id",
+  absen_pending_rows = (
+    await Absensi.filter(
+      status_absen="pending",
+      tanggal_absen__gte=day_start,
+      tanggal_absen__lt=day_end,
+    )
+    .order_by("-tanggal_absen")
+    .values(
+      "id_absensi",
+      "id_karyawan",
+      "tanggal_absen",
+      "check_in",
+      "check_out",
+      "pengajuan",
+      "status_absen",
+      "karyawan__nama_karyawan",
+      "karyawan__email_karyawan",
+      "karyawan__nomor_hp",
+      "karyawan__foto_profile",
+      "karyawan__tanggal_rekrut",
+      "karyawan__status",
+      "karyawan__posisi",
+      "karyawan__departemen_id",
+    )
   )
   absen_pending_list = [
     {
@@ -265,17 +290,21 @@ async def get_data_dashboard(tgl: str | None = None):
     tanggal_absen__gte=day_start,
     tanggal_absen__lt=day_end,
   ).count()
-  ga_hadir_rows = await Absensi.filter(
-    pengajuan__in=["cuti", "sakit", "izin"],
-    tanggal_absen__gte=day_start,
-    tanggal_absen__lt=day_end,
-  ).order_by("karyawan__nama_karyawan").values(
-    "id_absensi",
-    "id_karyawan",
-    "tanggal_absen",
-    "pengajuan",
-    "status_absen",
-    "karyawan__nama_karyawan",
+  ga_hadir_rows = (
+    await Absensi.filter(
+      pengajuan__in=["cuti", "sakit", "izin"],
+      tanggal_absen__gte=day_start,
+      tanggal_absen__lt=day_end,
+    )
+    .order_by("karyawan__nama_karyawan")
+    .values(
+      "id_absensi",
+      "id_karyawan",
+      "tanggal_absen",
+      "pengajuan",
+      "status_absen",
+      "karyawan__nama_karyawan",
+    )
   )
   ga_hadir_list = [
     {
@@ -331,19 +360,23 @@ async def get_analytics(start_date: str | None = None, end_date: str | None = No
     "tanggal_akhir",
     "karyawan__nama_karyawan",
   )
-  audit_rows = await AuditLog.filter(
-    created_at__gte=start_dt,
-    created_at__lt=end_dt,
-  ).order_by("-created_at").values(
-    "id",
-    "actor_username",
-    "actor_id_karyawan",
-    "actor_role",
-    "action",
-    "table_name",
-    "record_id",
-    "created_at",
-    "metadata",
+  audit_rows = (
+    await AuditLog.filter(
+      created_at__gte=start_dt,
+      created_at__lt=end_dt,
+    )
+    .order_by("-created_at")
+    .values(
+      "id",
+      "actor_username",
+      "actor_id_karyawan",
+      "actor_role",
+      "action",
+      "table_name",
+      "record_id",
+      "created_at",
+      "metadata",
+    )
   )
 
   trend_map: dict[str, dict] = {}
@@ -432,43 +465,112 @@ async def get_analytics(start_date: str | None = None, end_date: str | None = No
       late_by_employee[name]["jumlah_telat"] += 1
 
   departemen_breakdown = []
+
   for row in dept_map.values():
     hadir_base = row["hadir"] if row["hadir"] > 0 else 1
     row["late_rate_percent"] = round((row["telat"] / hadir_base) * 100, 2)
     departemen_breakdown.append(row)
-  departemen_breakdown.sort(key=lambda x: (-x["late_rate_percent"], -x["telat"]))
 
-  top_telat = sorted(
-    late_by_employee.values(),
-    key=lambda x: (-x["jumlah_telat"], x["nama_karyawan"]),
-  )[:5]
-  top_tidak_hadir = sorted(
-    absent_by_employee.values(),
-    key=lambda x: (-x["jumlah_tidak_hadir"], x["nama_karyawan"]),
-  )[:5]
+  # Membuat fungsi bantuan untuk menggantikan 'lambda'
+  def kriteria_sort_departemen(x):
+    # Mengembalikan nilai untuk diurutkan
+    return (x["late_rate_percent"], x["telat"])
 
-  approval_logs = [
-    row for row in audit_rows
-    if row["table_name"] in {"absensi", "pengajuan_absen"}
-    and row["action"] in {"approve", "reject"}
-  ]
-  approved_actions = sum(1 for row in approval_logs if row["action"] == "approve")
-  rejected_actions = sum(1 for row in approval_logs if row["action"] == "reject")
+  # Menggunakan reverse=True agar diurutkan dari nilai terbesar ke terkecil (Descending)
+  departemen_breakdown.sort(key=kriteria_sort_departemen, reverse=True)
 
-  actor_action_map: dict[str, dict] = {}
+  # ---------------------------------------------------------
+  # 2. MENCARI TOP 5 KARYAWAN TELAT & TIDAK HADIR
+  # ---------------------------------------------------------
+  def kriteria_sort_telat(x):
+    # Tanda minus (-) berarti diurutkan menurun (angka terbesar dulu)
+    # Nama karyawan tanpa minus berarti diurutkan menaik sesuai abjad A-Z
+    return (-x["jumlah_telat"], x["nama_karyawan"])
+
+  top_telat_semua = sorted(late_by_employee.values(), key=kriteria_sort_telat)
+  top_telat = top_telat_semua[0:5]  # Mengambil 5 data pertama
+
+  def kriteria_sort_absen(x):
+    return (-x["jumlah_tidak_hadir"], x["nama_karyawan"])
+
+  top_tidak_hadir_semua = sorted(absent_by_employee.values(), key=kriteria_sort_absen)
+  top_tidak_hadir = top_tidak_hadir_semua[0:5]
+
+  # ---------------------------------------------------------
+  # 3. MEMFILTER APPROVAL LOGS
+  # ---------------------------------------------------------
+  approval_logs = []
+
+  # Mengganti List Comprehension dengan for loop dan if standar
+  for row in audit_rows:
+    # Menggunakan list biasa [...] bukan set {...} agar lebih awam
+    if row["table_name"] in ["absensi", "pengajuan_absen"]:
+      if row["action"] in ["approve", "reject"]:
+        approval_logs.append(row)
+
+  # ---------------------------------------------------------
+  # 4. MENGHITUNG TOTAL APPROVE DAN REJECT
+  # ---------------------------------------------------------
+  approved_actions = 0
+  rejected_actions = 0
+
+  # Mengganti fungsi sum() dan generator dengan cara hitung manual (counter)
   for row in approval_logs:
-    actor_key = row.get("actor_username") or row.get("actor_id_karyawan") or "unknown"
+    if row["action"] == "approve":
+      approved_actions = approved_actions + 1
+    elif row["action"] == "reject":
+      rejected_actions = rejected_actions + 1
+
+  # ---------------------------------------------------------
+  # MENGHITUNG DAN MENGELOMPOKKAN AKSI (APPROVE/REJECT) PER AKTOR
+  # ---------------------------------------------------------
+  actor_action_map: dict[str, dict] = {}
+
+  for row in approval_logs:
+    # 1. Menentukan Kunci Aktor (actor_key) secara eksplisit
+    # Memeriksa username terlebih dahulu
+    if row.get("actor_username"):
+      actor_key = row.get("actor_username")
+    # Jika username kosong, periksa ID karyawan
+    elif row.get("actor_id_karyawan"):
+      actor_key = row.get("actor_id_karyawan")
+    # Jika keduanya kosong, gunakan "unknown"
+    else:
+      actor_key = "unknown"
+
+    # 2. Membuat kerangka data awal jika aktor belum ada di dalam dictionary
     if actor_key not in actor_action_map:
       actor_action_map[actor_key] = {
         "actor": actor_key,
         "approve": 0,
         "reject": 0,
       }
-    actor_action_map[actor_key][row["action"]] += 1
-  approval_by_actor = sorted(
-    actor_action_map.values(),
-    key=lambda x: (-(x["approve"] + x["reject"]), x["actor"]),
-  )
+
+    # 3. Menambahkan hitungan berdasarkan aksi yang dilakukan
+    aksi = row["action"]
+    if aksi == "approve":
+      actor_action_map[actor_key]["approve"] = (
+        actor_action_map[actor_key]["approve"] + 1
+      )
+    elif aksi == "reject":
+      actor_action_map[actor_key]["reject"] = actor_action_map[actor_key]["reject"] + 1
+
+  # ---------------------------------------------------------
+  # MENGURUTKAN DATA AKTOR BERDASARKAN TOTAL AKSI
+  # ---------------------------------------------------------
+  def kriteria_sort_aktor(x):
+    # Menghitung total aksi (jumlah approve ditambah jumlah reject)
+    total_aksi = x["approve"] + x["reject"]
+
+    # Mengembalikan dua nilai untuk diurutkan:
+    # a. -total_aksi: Tanda minus berarti diurutkan dari angka paling besar (Descending)
+    # b. x["actor"]: Jika total aksinya sama, urutkan berdasarkan nama abjad A-Z (Ascending)
+    return (-total_aksi, x["actor"])
+
+  # Mengambil semua nilai dari dictionary untuk diurutkan
+  daftar_aktor = actor_action_map.values()
+  # Melakukan pengurutan dengan fungsi bantuan yang dibuat di atas
+  approval_by_actor = sorted(daftar_aktor, key=kriteria_sort_aktor)
 
   # SLA sederhana: selisih dari tanggal record ke timestamp aksi audit.
   absensi_lookup = {str(row["id_absensi"]): row for row in absensi_rows}
@@ -492,10 +594,14 @@ async def get_analytics(start_date: str | None = None, end_date: str | None = No
     if delta_hours >= 0:
       response_hours_list.append(delta_hours)
 
-  avg_response_hours = round(
-    (sum(response_hours_list) / len(response_hours_list)),
-    2,
-  ) if response_hours_list else None
+  avg_response_hours = (
+    round(
+      (sum(response_hours_list) / len(response_hours_list)),
+      2,
+    )
+    if response_hours_list
+    else None
+  )
 
   return {
     "range": {
@@ -618,7 +724,9 @@ async def export_excel(start_date: str | None = None, end_date: str | None = Non
     start_d = datetime.strptime(start_date, "%Y-%m-%d").date()
     end_d = datetime.strptime(end_date, "%Y-%m-%d").date()
     if end_d < start_d:
-      raise HTTPException(status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai")
+      raise HTTPException(
+        status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai"
+      )
     periode_laporan = f"{_format_str_date(start_date)} s/d {_format_str_date(end_date)}"
     start_dt = datetime.combine(start_d, time.min)
     end_dt = datetime.combine(end_d + timedelta(days=1), time.min)
@@ -838,7 +946,9 @@ async def update_konfigurasi(
   payload: KonfigurasiUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
+  before = (
+    await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
+  )
   before_row = before[0] if before else None
   if not before_row:
     raise HTTPException(status_code=404, detail="Konfigurasi tidak ditemukan")
@@ -847,7 +957,9 @@ async def update_konfigurasi(
     toleransi_terlambat=payload.toleransi_terlambat,
     maks_hari_cuti=payload.maks_hari_cuti,
   )
-  after = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
+  after = (
+    await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
+  )
   after_row = after[0] if after else None
   await log_audit(
     actor=actor,
@@ -928,10 +1040,14 @@ async def update_status_absensi(
 ):
   if is_bulk and payload.updated_bulk_data:
     for item in payload.updated_bulk_data:
-      before = await Absensi.filter(
-        id_absensi=item["id_absensi"],
-        karyawan_id=item["id_karyawan"],
-      ).limit(1).values()
+      before = (
+        await Absensi.filter(
+          id_absensi=item["id_absensi"],
+          karyawan_id=item["id_karyawan"],
+        )
+        .limit(1)
+        .values()
+      )
       before_row = before[0] if before else None
       if not before_row:
         continue
@@ -943,15 +1059,21 @@ async def update_status_absensi(
         status_absen=item["status_absen"],
         alasan_penolakan=item.get("alasan_penolakan", None),
       )
-      after = await Absensi.filter(
-        id_absensi=item["id_absensi"],
-        karyawan_id=item["id_karyawan"],
-      ).limit(1).values()
+      after = (
+        await Absensi.filter(
+          id_absensi=item["id_absensi"],
+          karyawan_id=item["id_karyawan"],
+        )
+        .limit(1)
+        .values()
+      )
       after_row = after[0] if after else None
 
       audit_action = (
-        "approve" if item["status_absen"] == "approved"
-        else "reject" if item["status_absen"] == "rejected"
+        "approve"
+        if item["status_absen"] == "approved"
+        else "reject"
+        if item["status_absen"] == "rejected"
         else "edit"
       )
       await log_audit(
@@ -981,10 +1103,14 @@ async def update_status_absensi(
           )
         )
   else:
-    before = await Absensi.filter(
-      id_absensi=payload.id_absensi,
-      karyawan_id=payload.id_karyawan,
-    ).limit(1).values()
+    before = (
+      await Absensi.filter(
+        id_absensi=payload.id_absensi,
+        karyawan_id=payload.id_karyawan,
+      )
+      .limit(1)
+      .values()
+    )
     before_row = before[0] if before else None
     if not before_row:
       raise HTTPException(status_code=404, detail="Data absensi tidak ditemukan")
@@ -996,15 +1122,21 @@ async def update_status_absensi(
       status_absen=payload.status_absen,
       alasan_penolakan=payload.alasan_penolakan if payload.alasan_penolakan else None,
     )
-    after = await Absensi.filter(
-      id_absensi=payload.id_absensi,
-      karyawan_id=payload.id_karyawan,
-    ).limit(1).values()
+    after = (
+      await Absensi.filter(
+        id_absensi=payload.id_absensi,
+        karyawan_id=payload.id_karyawan,
+      )
+      .limit(1)
+      .values()
+    )
     after_row = after[0] if after else None
 
     audit_action = (
-      "approve" if payload.status_absen == "approved"
-      else "reject" if payload.status_absen == "rejected"
+      "approve"
+      if payload.status_absen == "approved"
+      else "reject"
+      if payload.status_absen == "rejected"
       else "edit"
     )
     await log_audit(
@@ -1047,22 +1179,30 @@ async def update_pengajuan(
   payload: UpdatePengajuanRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before_pengajuan = await PengajuanAbsen.filter(
-    id_pengajuan=payload.id_pengajuan,
-    karyawan_id=payload.id_karyawan,
-  ).limit(1).values()
+  before_pengajuan = (
+    await PengajuanAbsen.filter(
+      id_pengajuan=payload.id_pengajuan,
+      karyawan_id=payload.id_karyawan,
+    )
+    .limit(1)
+    .values()
+  )
   before_pengajuan = before_pengajuan[0] if before_pengajuan else None
   if not before_pengajuan:
     raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
 
   async with in_transaction() as db:
     if payload.alasan_penolakan is not None:
-      updated = await PengajuanAbsen.filter(
-        id_pengajuan=payload.id_pengajuan,
-        karyawan_id=payload.id_karyawan,
-      ).using_db(db).update(
-        status=payload.status,
-        alasan_penolakan=payload.alasan_penolakan,
+      updated = (
+        await PengajuanAbsen.filter(
+          id_pengajuan=payload.id_pengajuan,
+          karyawan_id=payload.id_karyawan,
+        )
+        .using_db(db)
+        .update(
+          status=payload.status,
+          alasan_penolakan=payload.alasan_penolakan,
+        )
       )
       if updated == 0:
         raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
@@ -1078,18 +1218,26 @@ async def update_pengajuan(
       day_start = datetime.combine(start_d, time.min)
       day_end = datetime.combine(end_d + timedelta(days=1), time.min)
 
-      existing_rows = await Absensi.filter(
-        karyawan_id=payload.id_karyawan,
-        tanggal_absen__gte=day_start,
-        tanggal_absen__lt=day_end,
-      ).using_db(db).values("id_absensi", "tanggal_absen")
-      existing_dates = {row["tanggal_absen"].date(): row["id_absensi"] for row in existing_rows}
+      existing_rows = (
+        await Absensi.filter(
+          karyawan_id=payload.id_karyawan,
+          tanggal_absen__gte=day_start,
+          tanggal_absen__lt=day_end,
+        )
+        .using_db(db)
+        .values("id_absensi", "tanggal_absen")
+      )
+      existing_dates = {
+        row["tanggal_absen"].date(): row["id_absensi"] for row in existing_rows
+      }
 
       for current_date in days_in_range:
         absensi_id = existing_dates.get(current_date)
         if absensi_id:
-          await Absensi.filter(id_absensi=absensi_id).using_db(db).update(
-            status_absen=payload.status
+          await (
+            Absensi.filter(id_absensi=absensi_id)
+            .using_db(db)
+            .update(status_absen=payload.status)
           )
           continue
 
@@ -1106,31 +1254,45 @@ async def update_pengajuan(
           using_db=db,
         )
 
-      updated = await PengajuanAbsen.filter(
-        id_pengajuan=payload.id_pengajuan,
-        karyawan_id=payload.id_karyawan,
-      ).using_db(db).update(status=payload.status)
+      updated = (
+        await PengajuanAbsen.filter(
+          id_pengajuan=payload.id_pengajuan,
+          karyawan_id=payload.id_karyawan,
+        )
+        .using_db(db)
+        .update(status=payload.status)
+      )
       if updated == 0:
         raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
 
     else:
-      updated = await PengajuanAbsen.filter(
-        id_pengajuan=payload.id_pengajuan,
-        karyawan_id=payload.id_karyawan,
-      ).using_db(db).update(status=payload.status)
+      updated = (
+        await PengajuanAbsen.filter(
+          id_pengajuan=payload.id_pengajuan,
+          karyawan_id=payload.id_karyawan,
+        )
+        .using_db(db)
+        .update(status=payload.status)
+      )
       if updated == 0:
         raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
 
-  after_pengajuan = await PengajuanAbsen.filter(
-    id_pengajuan=payload.id_pengajuan,
-    karyawan_id=payload.id_karyawan,
-  ).limit(1).values()
+  after_pengajuan = (
+    await PengajuanAbsen.filter(
+      id_pengajuan=payload.id_pengajuan,
+      karyawan_id=payload.id_karyawan,
+    )
+    .limit(1)
+    .values()
+  )
   after_pengajuan = after_pengajuan[0] if after_pengajuan else None
   await log_audit(
     actor=actor,
     action=(
-      "approve" if payload.status == "approved"
-      else "reject" if payload.status == "rejected"
+      "approve"
+      if payload.status == "approved"
+      else "reject"
+      if payload.status == "rejected"
       else "edit"
     ),
     table_name="pengajuan_absen",
