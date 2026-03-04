@@ -1,4 +1,5 @@
 from app.models.absensi import Absensi
+from app.models.audit_log import AuditLog
 from app.models.akun import Akun
 from app.models.departemen import Departemen
 from app.models.hari_libur import HariLibur
@@ -10,6 +11,7 @@ from app.models.pengajuan_absen import PengajuanAbsen
 
 __all__ = [
   "Akun",
+  "AuditLog",
   "Karyawan",
   "Departemen",
   "Absensi",

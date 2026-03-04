@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta
 import json
 
 from fastapi import HTTPException
+from fastapi_jwt import JwtAuthorizationCredentials
 from fastapi.responses import FileResponse
 from openpyxl import Workbook
 from openpyxl.cell import MergedCell
@@ -23,6 +24,7 @@ from app.models import (
   PengajuanAbsen,
 )
 from app.models.absensi import Absensi
+from app.core.audit import log_audit
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
@@ -523,12 +525,20 @@ async def export_excel(start_date: str | None = None, end_date: str | None = Non
   )
 
 
-async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest) -> dict:
+async def update_karyawan(
+  id_karyawan: str,
+  payload: KaryawanUpdateRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
+    raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
+
   tanggal_rekrut = (
     date.fromisoformat(payload.tanggal_rekrut) if payload.tanggal_rekrut else None
   )
-
-  updated = await Karyawan.filter(id_karyawan=id_karyawan).update(
+  await Karyawan.filter(id_karyawan=id_karyawan).update(
     nama_karyawan=payload.nama_karyawan,
     email_karyawan=payload.email_karyawan,
     nomor_hp=payload.nomor_hp,
@@ -537,43 +547,82 @@ async def update_karyawan(id_karyawan: str, payload: KaryawanUpdateRequest) -> d
     departemen_id=payload.id_departemen,
     posisi=payload.posisi,
   )
-  if updated == 0:
-    raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
-
+  after = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values()
+  after_row = after[0] if after else None
+  await log_audit(
+    actor=actor,
+    action="edit",
+    table_name="karyawan",
+    record_id=id_karyawan,
+    before_data=before_row,
+    after_data=after_row,
+  )
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
-async def update_akun(username: str, payload: AkunUpdateRequest) -> dict:
+async def update_akun(
+  username: str,
+  payload: AkunUpdateRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await Akun.filter(username=username).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
+    raise HTTPException(status_code=404, detail="Data akun tidak ditemukan")
+
   passwd = hashlib.md5(str(payload.passwd).encode()).hexdigest()
   status = "aktif" if payload.status else "nonaktif"
-
-  updated = await Akun.filter(username=username).update(
+  await Akun.filter(username=username).update(
     passwd=passwd,
     roles=payload.roles,
     karyawan_id=payload.id_karyawan,
     status=status,
   )
-  if updated == 0:
-    raise HTTPException(status_code=404, detail="Data akun tidak ditemukan")
-
+  after = await Akun.filter(username=username).limit(1).values()
+  after_row = after[0] if after else None
+  await log_audit(
+    actor=actor,
+    action="edit",
+    table_name="akun",
+    record_id=username,
+    before_data=before_row,
+    after_data=after_row,
+  )
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
 async def update_konfigurasi(
   id_pengaturan: int,
   payload: KonfigurasiUpdateRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  updated = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).update(
+  before = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
+    raise HTTPException(status_code=404, detail="Konfigurasi tidak ditemukan")
+
+  await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).update(
     toleransi_terlambat=payload.toleransi_terlambat,
     maks_hari_cuti=payload.maks_hari_cuti,
   )
-  if updated == 0:
-    raise HTTPException(status_code=404, detail="Konfigurasi tidak ditemukan")
-
+  after = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
+  after_row = after[0] if after else None
+  await log_audit(
+    actor=actor,
+    action="edit",
+    table_name="konfigurasi_aplikasi",
+    record_id=id_pengaturan,
+    before_data=before_row,
+    after_data=after_row,
+  )
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
-async def update_jadwal(id_jadwal: int, payload: JadwalUpdateRequest) -> dict:
+async def update_jadwal(
+  id_jadwal: int,
+  payload: JadwalUpdateRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
   fields_to_update = {}
   if payload.shift_mulai:
     fields_to_update["shift_mulai"] = time.fromisoformat(payload.shift_mulai)
@@ -583,43 +632,96 @@ async def update_jadwal(id_jadwal: int, payload: JadwalUpdateRequest) -> dict:
   if not fields_to_update:
     raise HTTPException(status_code=400, detail="Tidak ada field jadwal yang diupdate")
 
-  updated = await JadwalKerja.filter(id_jadwal=id_jadwal).update(**fields_to_update)
-  if updated == 0:
+  before = await JadwalKerja.filter(id_jadwal=id_jadwal).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
     raise HTTPException(status_code=404, detail="Jadwal tidak ditemukan")
 
+  await JadwalKerja.filter(id_jadwal=id_jadwal).update(**fields_to_update)
+  after = await JadwalKerja.filter(id_jadwal=id_jadwal).limit(1).values()
+  after_row = after[0] if after else None
+  await log_audit(
+    actor=actor,
+    action="edit",
+    table_name="jadwal_kerja",
+    record_id=id_jadwal,
+    before_data=before_row,
+    after_data=after_row,
+  )
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
-async def update_hari_libur(id_libur: int, payload: HariLiburUpdateRequest) -> dict:
-  updated = await HariLibur.filter(id_libur=id_libur).update(
+async def update_hari_libur(
+  id_libur: int,
+  payload: HariLiburUpdateRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await HariLibur.filter(id_libur=id_libur).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
+    raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
+
+  await HariLibur.filter(id_libur=id_libur).update(
     tanggal=date.fromisoformat(payload.tanggal),
     keterangan=payload.keterangan,
     tipe=payload.tipe,
   )
-  if updated == 0:
-    raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
-
+  after = await HariLibur.filter(id_libur=id_libur).limit(1).values()
+  after_row = after[0] if after else None
+  await log_audit(
+    actor=actor,
+    action="edit",
+    table_name="hari_libur",
+    record_id=id_libur,
+    before_data=before_row,
+    after_data=after_row,
+  )
   return {"status": "ok", "message": "Sukses Update Data"}
+
 
 async def update_status_absensi(
   payload: UpdateStatusAbsensiRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
   is_bulk: bool = False,
 ):
-  # print ku sementara buat pengganti log_message yang ada di legacy.
   if is_bulk and payload.updated_bulk_data:
     for item in payload.updated_bulk_data:
-      if item.get("status_absen") == "rejected":
-        print("Alasan Penolakan:", item.get("alasan_penolakan", "Tidak ada alasan yang diberikan"))
-        log_message = (
-          f"Karyawan [{item.get('id_karyawan')}] Sudah Di Reject. Skipped From Bulk"
-        )
-        logger.info(log_message)
+      before = await Absensi.filter(
+        id_absensi=item["id_absensi"],
+        karyawan_id=item["id_karyawan"],
+      ).limit(1).values()
+      before_row = before[0] if before else None
+      if not before_row:
         continue
 
-      await Absensi.filter(id_absensi=item["id_absensi"], karyawan_id=item["id_karyawan"]).update(
+      await Absensi.filter(
+        id_absensi=item["id_absensi"],
+        karyawan_id=item["id_karyawan"],
+      ).update(
         status_absen=item["status_absen"],
         alasan_penolakan=item.get("alasan_penolakan", None),
       )
+      after = await Absensi.filter(
+        id_absensi=item["id_absensi"],
+        karyawan_id=item["id_karyawan"],
+      ).limit(1).values()
+      after_row = after[0] if after else None
+
+      audit_action = (
+        "approve" if item["status_absen"] == "approved"
+        else "reject" if item["status_absen"] == "rejected"
+        else "edit"
+      )
+      await log_audit(
+        actor=actor,
+        action=audit_action,
+        table_name="absensi",
+        record_id=item["id_absensi"],
+        before_data=before_row,
+        after_data=after_row,
+        metadata={"mode": "bulk"},
+      )
+
       log_message = (
         f"ADMIN  MENGUPDATE STATUS ABSENSI untuk Karyawan [{item['id_karyawan']}] "
         f"menjadi [{item['status_absen']}]"
@@ -637,10 +739,42 @@ async def update_status_absensi(
           )
         )
   else:
-    await Absensi.filter(id_absensi=payload.id_absensi, karyawan_id=payload.id_karyawan).update(
+    before = await Absensi.filter(
+      id_absensi=payload.id_absensi,
+      karyawan_id=payload.id_karyawan,
+    ).limit(1).values()
+    before_row = before[0] if before else None
+    if not before_row:
+      raise HTTPException(status_code=404, detail="Data absensi tidak ditemukan")
+
+    await Absensi.filter(
+      id_absensi=payload.id_absensi,
+      karyawan_id=payload.id_karyawan,
+    ).update(
       status_absen=payload.status_absen,
       alasan_penolakan=payload.alasan_penolakan if payload.alasan_penolakan else None,
     )
+    after = await Absensi.filter(
+      id_absensi=payload.id_absensi,
+      karyawan_id=payload.id_karyawan,
+    ).limit(1).values()
+    after_row = after[0] if after else None
+
+    audit_action = (
+      "approve" if payload.status_absen == "approved"
+      else "reject" if payload.status_absen == "rejected"
+      else "edit"
+    )
+    await log_audit(
+      actor=actor,
+      action=audit_action,
+      table_name="absensi",
+      record_id=payload.id_absensi,
+      before_data=before_row,
+      after_data=after_row,
+      metadata={"mode": "single"},
+    )
+
     log_message = (
       f"ADMIN  MENGUPDATE STATUS ABSENSI untuk Karyawan [{payload.id_karyawan}] "
       f"menjadi [{payload.status_absen}]"
@@ -656,7 +790,7 @@ async def update_status_absensi(
           }
         )
       )
-      
+
   return {"status": "ok", "message": "Sukses Update Status Absensi"}
 
 
@@ -667,7 +801,18 @@ def _daterange_inclusive(d1: date, d2: date):
     cur += timedelta(days=1)
 
 
-async def update_pengajuan(payload: UpdatePengajuanRequest) -> dict:
+async def update_pengajuan(
+  payload: UpdatePengajuanRequest,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before_pengajuan = await PengajuanAbsen.filter(
+    id_pengajuan=payload.id_pengajuan,
+    karyawan_id=payload.id_karyawan,
+  ).limit(1).values()
+  before_pengajuan = before_pengajuan[0] if before_pengajuan else None
+  if not before_pengajuan:
+    raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
+
   async with in_transaction() as db:
     if payload.alasan_penolakan is not None:
       updated = await PengajuanAbsen.filter(
@@ -734,6 +879,24 @@ async def update_pengajuan(payload: UpdatePengajuanRequest) -> dict:
       if updated == 0:
         raise HTTPException(status_code=404, detail="Data pengajuan tidak ditemukan")
 
+  after_pengajuan = await PengajuanAbsen.filter(
+    id_pengajuan=payload.id_pengajuan,
+    karyawan_id=payload.id_karyawan,
+  ).limit(1).values()
+  after_pengajuan = after_pengajuan[0] if after_pengajuan else None
+  await log_audit(
+    actor=actor,
+    action=(
+      "approve" if payload.status == "approved"
+      else "reject" if payload.status == "rejected"
+      else "edit"
+    ),
+    table_name="pengajuan_absen",
+    record_id=payload.id_pengajuan,
+    before_data=before_pengajuan,
+    after_data=after_pengajuan,
+  )
+
   log_message = (
     f"ADMIN MENGUPDATE STATUS PENGAJUAN untuk Karyawan [{payload.id_karyawan}] "
     f"menjadi [{payload.status}]"
@@ -754,36 +917,105 @@ async def update_pengajuan(payload: UpdatePengajuanRequest) -> dict:
   return {"status": "ok", "message": "Sukses Update Pengajuan"}
 
 
-async def unbind_device(username: str) -> dict:
-  updated = await Akun.filter(username=username).update(device_id=None)
-  if updated == 0:
+async def unbind_device(
+  username: str,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await Akun.filter(username=username).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
     raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+
+  await Akun.filter(username=username).update(device_id=None)
+  after = await Akun.filter(username=username).limit(1).values()
+  after_row = after[0] if after else None
+  await log_audit(
+    actor=actor,
+    action="edit",
+    table_name="akun",
+    record_id=username,
+    before_data=before_row,
+    after_data=after_row,
+    metadata={"activity": "unbind_device"},
+  )
   return {"status": "ok", "message": "Sukses Unbind Device Data"}
 
 
-async def delete_karyawan(id_karyawan: str) -> dict:
-  deleted = await Karyawan.filter(id_karyawan=id_karyawan).delete()
-  if deleted == 0:
+async def delete_karyawan(
+  id_karyawan: str,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
     raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
+  await Karyawan.filter(id_karyawan=id_karyawan).delete()
+  await log_audit(
+    actor=actor,
+    action="delete",
+    table_name="karyawan",
+    record_id=id_karyawan,
+    before_data=before_row,
+    after_data=None,
+  )
   return {"status": "ok", "message": "Sukses Delete Data"}
 
 
-async def delete_akun(username: str) -> dict:
-  deleted = await Akun.filter(username=username).delete()
-  if deleted == 0:
+async def delete_akun(
+  username: str,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await Akun.filter(username=username).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
     raise HTTPException(status_code=404, detail="Data akun tidak ditemukan")
+  await Akun.filter(username=username).delete()
+  await log_audit(
+    actor=actor,
+    action="delete",
+    table_name="akun",
+    record_id=username,
+    before_data=before_row,
+    after_data=None,
+  )
   return {"status": "ok", "message": "Sukses Delete Data"}
 
 
-async def delete_departemen(id_departemen: int) -> dict:
-  deleted = await Departemen.filter(id_departemen=id_departemen).delete()
-  if deleted == 0:
+async def delete_departemen(
+  id_departemen: int,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await Departemen.filter(id_departemen=id_departemen).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
     raise HTTPException(status_code=404, detail="Data departemen tidak ditemukan")
+  await Departemen.filter(id_departemen=id_departemen).delete()
+  await log_audit(
+    actor=actor,
+    action="delete",
+    table_name="departemen",
+    record_id=id_departemen,
+    before_data=before_row,
+    after_data=None,
+  )
   return {"status": "ok", "message": "Sukses Delete Data"}
 
 
-async def delete_hari_libur(id_libur: int) -> dict:
-  deleted = await HariLibur.filter(id_libur=id_libur).delete()
-  if deleted == 0:
+async def delete_hari_libur(
+  id_libur: int,
+  actor: JwtAuthorizationCredentials | dict | None = None,
+) -> dict:
+  before = await HariLibur.filter(id_libur=id_libur).limit(1).values()
+  before_row = before[0] if before else None
+  if not before_row:
     raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
+  await HariLibur.filter(id_libur=id_libur).delete()
+  await log_audit(
+    actor=actor,
+    action="delete",
+    table_name="hari_libur",
+    record_id=id_libur,
+    before_data=before_row,
+    after_data=None,
+  )
   return {"status": "ok", "message": "Sukses Delete Data"}
