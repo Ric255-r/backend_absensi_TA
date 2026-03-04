@@ -141,6 +141,21 @@ async def get_data_dashboard(tgl: str | None = Query(None)):
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
+@router.get("/get_analytics")
+async def get_analytics(
+  start_date: str | None = Query(None),
+  end_date: str | None = Query(None),
+):
+  try:
+    return await admin_controller.get_analytics(start_date=start_date, end_date=end_date)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
 @router.get("/get_pengajuan", response_model=list[PengajuanItemResponse])
 async def get_pengajuan(tgl: str | None = Query(None)):
   try:

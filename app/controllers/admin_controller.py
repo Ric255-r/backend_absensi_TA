@@ -16,6 +16,7 @@ from openpyxl.workbook.protection import WorkbookProtection
 
 from app.models import (
   Akun,
+  AuditLog,
   Departemen,
   HariLibur,
   JadwalKerja,
@@ -41,6 +42,20 @@ from app.schemas.requests.admin import (
 from utils.fn_log import logger
 from app.realtime.absensi_ws import admin_to_user_conn
 from tortoise.transactions import in_transaction
+
+
+def _resolve_analytics_range(
+  start_date: str | None,
+  end_date: str | None,
+) -> tuple[date, date]:
+  today = date.today()
+  resolved_end = date.fromisoformat(end_date) if end_date else today
+  resolved_start = (
+    date.fromisoformat(start_date) if start_date else (resolved_end - timedelta(days=29))
+  )
+  if resolved_end < resolved_start:
+    raise HTTPException(status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai")
+  return resolved_start, resolved_end
 
 
 async def regis_karyawan(payload: KaryawanCreateRequest) -> dict:
@@ -283,6 +298,233 @@ async def get_data_dashboard(tgl: str | None = None):
     "absen_pending_list": absen_pending_list,
     "data_ga_hadir": {"ga_hadir": ga_hadir_count},
     "ga_hadir_list": ga_hadir_list,
+  }
+
+
+async def get_analytics(start_date: str | None = None, end_date: str | None = None):
+  start_d, end_d = _resolve_analytics_range(start_date, end_date)
+  start_dt = datetime.combine(start_d, time.min)
+  end_dt = datetime.combine(end_d + timedelta(days=1), time.min)
+  days_count = (end_d - start_d).days + 1
+
+  absensi_rows = await Absensi.filter(
+    tanggal_absen__gte=start_dt,
+    tanggal_absen__lt=end_dt,
+  ).values(
+    "id_absensi",
+    "id_karyawan",
+    "tanggal_absen",
+    "status_absen",
+    "pengajuan",
+    "is_telat",
+    "karyawan__nama_karyawan",
+    "karyawan__departemen__nama_departemen",
+  )
+  pengajuan_rows = await PengajuanAbsen.filter(
+    tanggal_mulai__lte=end_d,
+    tanggal_akhir__gte=start_d,
+  ).values(
+    "id_pengajuan",
+    "id_karyawan",
+    "status",
+    "tanggal_mulai",
+    "tanggal_akhir",
+    "karyawan__nama_karyawan",
+  )
+  audit_rows = await AuditLog.filter(
+    created_at__gte=start_dt,
+    created_at__lt=end_dt,
+  ).order_by("-created_at").values(
+    "id",
+    "actor_username",
+    "actor_id_karyawan",
+    "actor_role",
+    "action",
+    "table_name",
+    "record_id",
+    "created_at",
+    "metadata",
+  )
+
+  trend_map: dict[str, dict] = {}
+  for i in range(days_count):
+    cur_day = start_d + timedelta(days=i)
+    key = cur_day.isoformat()
+    trend_map[key] = {
+      "date": key,
+      "hadir": 0,
+      "tidak_hadir": 0,
+      "pending": 0,
+      "telat": 0,
+    }
+
+  dept_map: dict[str, dict] = {}
+  late_by_employee: dict[str, dict] = {}
+  absent_by_employee: dict[str, dict] = {}
+
+  present_types = {"hadir"}
+  absent_types = {"cuti", "sakit", "izin"}
+
+  present_count = 0
+  absent_count = 0
+  pending_count = 0
+  late_count = 0
+
+  for row in absensi_rows:
+    row_date = row["tanggal_absen"].date().isoformat()
+    pengajuan = (row.get("pengajuan") or "hadir").lower()
+    status_absen = (row.get("status_absen") or "").lower()
+    is_telat = int(row.get("is_telat") or 0)
+    name = row.get("karyawan__nama_karyawan") or "-"
+    dep = row.get("karyawan__departemen__nama_departemen") or "Tanpa Departemen"
+
+    if dep not in dept_map:
+      dept_map[dep] = {
+        "departemen": dep,
+        "total_record": 0,
+        "hadir": 0,
+        "tidak_hadir": 0,
+        "pending": 0,
+        "telat": 0,
+      }
+    dept_map[dep]["total_record"] += 1
+
+    if row_date in trend_map:
+      if pengajuan in absent_types:
+        trend_map[row_date]["tidak_hadir"] += 1
+      else:
+        trend_map[row_date]["hadir"] += 1
+      if status_absen == "pending":
+        trend_map[row_date]["pending"] += 1
+      if is_telat == 1:
+        trend_map[row_date]["telat"] += 1
+
+    if pengajuan in absent_types:
+      absent_count += 1
+      dept_map[dep]["tidak_hadir"] += 1
+      if name not in absent_by_employee:
+        absent_by_employee[name] = {
+          "id_karyawan": row["id_karyawan"],
+          "nama_karyawan": name,
+          "jumlah_tidak_hadir": 0,
+        }
+      absent_by_employee[name]["jumlah_tidak_hadir"] += 1
+    elif pengajuan in present_types:
+      present_count += 1
+      dept_map[dep]["hadir"] += 1
+    else:
+      present_count += 1
+      dept_map[dep]["hadir"] += 1
+
+    if status_absen == "pending":
+      pending_count += 1
+      dept_map[dep]["pending"] += 1
+
+    if is_telat == 1:
+      late_count += 1
+      dept_map[dep]["telat"] += 1
+      if name not in late_by_employee:
+        late_by_employee[name] = {
+          "id_karyawan": row["id_karyawan"],
+          "nama_karyawan": name,
+          "jumlah_telat": 0,
+        }
+      late_by_employee[name]["jumlah_telat"] += 1
+
+  departemen_breakdown = []
+  for row in dept_map.values():
+    hadir_base = row["hadir"] if row["hadir"] > 0 else 1
+    row["late_rate_percent"] = round((row["telat"] / hadir_base) * 100, 2)
+    departemen_breakdown.append(row)
+  departemen_breakdown.sort(key=lambda x: (-x["late_rate_percent"], -x["telat"]))
+
+  top_telat = sorted(
+    late_by_employee.values(),
+    key=lambda x: (-x["jumlah_telat"], x["nama_karyawan"]),
+  )[:5]
+  top_tidak_hadir = sorted(
+    absent_by_employee.values(),
+    key=lambda x: (-x["jumlah_tidak_hadir"], x["nama_karyawan"]),
+  )[:5]
+
+  approval_logs = [
+    row for row in audit_rows
+    if row["table_name"] in {"absensi", "pengajuan_absen"}
+    and row["action"] in {"approve", "reject"}
+  ]
+  approved_actions = sum(1 for row in approval_logs if row["action"] == "approve")
+  rejected_actions = sum(1 for row in approval_logs if row["action"] == "reject")
+
+  actor_action_map: dict[str, dict] = {}
+  for row in approval_logs:
+    actor_key = row.get("actor_username") or row.get("actor_id_karyawan") or "unknown"
+    if actor_key not in actor_action_map:
+      actor_action_map[actor_key] = {
+        "actor": actor_key,
+        "approve": 0,
+        "reject": 0,
+      }
+    actor_action_map[actor_key][row["action"]] += 1
+  approval_by_actor = sorted(
+    actor_action_map.values(),
+    key=lambda x: (-(x["approve"] + x["reject"]), x["actor"]),
+  )
+
+  # SLA sederhana: selisih dari tanggal record ke timestamp aksi audit.
+  absensi_lookup = {str(row["id_absensi"]): row for row in absensi_rows}
+  pengajuan_lookup = {str(row["id_pengajuan"]): row for row in pengajuan_rows}
+  response_hours_list = []
+  for row in approval_logs:
+    record_id = str(row.get("record_id") or "")
+    created_at = row["created_at"]
+    if row["table_name"] == "absensi":
+      source_row = absensi_lookup.get(record_id)
+      if not source_row:
+        continue
+      source_ts = source_row["tanggal_absen"]
+    else:
+      source_row = pengajuan_lookup.get(record_id)
+      if not source_row:
+        continue
+      source_ts = datetime.combine(source_row["tanggal_mulai"], time.min)
+
+    delta_hours = (created_at - source_ts).total_seconds() / 3600
+    if delta_hours >= 0:
+      response_hours_list.append(delta_hours)
+
+  avg_response_hours = round(
+    (sum(response_hours_list) / len(response_hours_list)),
+    2,
+  ) if response_hours_list else None
+
+  return {
+    "range": {
+      "start_date": start_d.isoformat(),
+      "end_date": end_d.isoformat(),
+      "days_count": days_count,
+    },
+    "overview": {
+      "total_record": len(absensi_rows),
+      "hadir": present_count,
+      "tidak_hadir": absent_count,
+      "pending": pending_count,
+      "telat": late_count,
+      "late_rate_percent": round((late_count / (present_count or 1)) * 100, 2),
+    },
+    "trend_harian": list(trend_map.values()),
+    "departemen_breakdown": departemen_breakdown,
+    "top_list": {
+      "top_telat": top_telat,
+      "top_tidak_hadir": top_tidak_hadir,
+    },
+    "approval_metrics": {
+      "total_action": len(approval_logs),
+      "approved": approved_actions,
+      "rejected": rejected_actions,
+      "avg_response_hours": avg_response_hours,
+      "by_actor": approval_by_actor,
+    },
+    "audit_feed": audit_rows[:30],
   }
 
 
