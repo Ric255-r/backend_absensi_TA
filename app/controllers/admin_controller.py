@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from openpyxl import Workbook
 from openpyxl.cell import MergedCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.styles.protection import SheetProtection
+from openpyxl.worksheet.protection import SheetProtection
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook.protection import WorkbookProtection
 
@@ -159,6 +159,165 @@ async def get_hari_libur():
   return await HariLibur.all().order_by("tanggal").values(
     "id_libur", "tanggal", "keterangan", "tipe"
   )
+
+
+async def get_data_dashboard(tgl: str | None = None):
+  target_date = date.fromisoformat(tgl) if tgl else date.today()
+  day_start = datetime.combine(target_date, time.min)
+  day_end = day_start + timedelta(days=1)
+
+  total_karyawan = await Karyawan.filter(status="aktif").count()
+  total_karyawan_rows = await Karyawan.filter(status="aktif").order_by("nama_karyawan").values(
+    "id_karyawan",
+    "nama_karyawan",
+    "email_karyawan",
+    "nomor_hp",
+    "foto_profile",
+    "tanggal_rekrut",
+    "status",
+    "posisi",
+    "departemen_id",
+    "departemen__nama_departemen",
+  )
+  total_karyawan_list = [
+    {
+      "id_karyawan": row["id_karyawan"],
+      "nama_karyawan": row["nama_karyawan"],
+      "email_karyawan": row["email_karyawan"],
+      "nomor_hp": row["nomor_hp"],
+      "foto_profile": row["foto_profile"],
+      "tanggal_rekrut": row["tanggal_rekrut"],
+      "status": row["status"],
+      "posisi": row["posisi"],
+      "departemen_id": row["departemen_id"],
+      "nama_departemen": row["departemen__nama_departemen"],
+    }
+    for row in total_karyawan_rows
+  ]
+
+  absen_pending_count = await Absensi.filter(
+    status_absen="pending",
+    tanggal_absen__gte=day_start,
+    tanggal_absen__lt=day_end,
+  ).count()
+  absen_pending_rows = await Absensi.filter(
+    status_absen="pending",
+    tanggal_absen__gte=day_start,
+    tanggal_absen__lt=day_end,
+  ).order_by("-tanggal_absen").values(
+    "id_absensi",
+    "id_karyawan",
+    "tanggal_absen",
+    "check_in",
+    "check_out",
+    "pengajuan",
+    "status_absen",
+    "karyawan__nama_karyawan",
+    "karyawan__email_karyawan",
+    "karyawan__nomor_hp",
+    "karyawan__foto_profile",
+    "karyawan__tanggal_rekrut",
+    "karyawan__status",
+    "karyawan__posisi",
+    "karyawan__departemen_id",
+  )
+  absen_pending_list = [
+    {
+      "id": row["id_absensi"],
+      "id_karyawan": row["id_karyawan"],
+      "id_absensi": row["id_absensi"],
+      "tanggal_absen": row["tanggal_absen"],
+      "check_in": row["check_in"],
+      "check_out": row["check_out"],
+      "pengajuan": row["pengajuan"],
+      "status_absen": row["status_absen"],
+      "nama_karyawan": row["karyawan__nama_karyawan"],
+      "email_karyawan": row["karyawan__email_karyawan"],
+      "nomor_hp": row["karyawan__nomor_hp"],
+      "foto_profile": row["karyawan__foto_profile"],
+      "tanggal_rekrut": row["karyawan__tanggal_rekrut"],
+      "status": row["karyawan__status"],
+      "posisi": row["karyawan__posisi"],
+      "id_departemen": row["karyawan__departemen_id"],
+    }
+    for row in absen_pending_rows
+  ]
+
+  ga_hadir_count = await Absensi.filter(
+    pengajuan__in=["cuti", "sakit", "izin"],
+    tanggal_absen__gte=day_start,
+    tanggal_absen__lt=day_end,
+  ).count()
+  ga_hadir_rows = await Absensi.filter(
+    pengajuan__in=["cuti", "sakit", "izin"],
+    tanggal_absen__gte=day_start,
+    tanggal_absen__lt=day_end,
+  ).order_by("karyawan__nama_karyawan").values(
+    "id_absensi",
+    "id_karyawan",
+    "tanggal_absen",
+    "pengajuan",
+    "status_absen",
+    "karyawan__nama_karyawan",
+  )
+  ga_hadir_list = [
+    {
+      "id": row["id_absensi"],
+      "id_karyawan": row["id_karyawan"],
+      "nama": row["karyawan__nama_karyawan"],
+      "tanggal_absen": row["tanggal_absen"],
+      "pengajuan": row["pengajuan"],
+      "status_absen": row["status_absen"],
+    }
+    for row in ga_hadir_rows
+  ]
+
+  logger.info("ADMIN MENGAKSES DASHBOARD")
+
+  return {
+    "total_karyawan": {"karyawan": total_karyawan},
+    "total_karyawan_list": total_karyawan_list,
+    "absen_pending": {"pending": absen_pending_count},
+    "absen_pending_list": absen_pending_list,
+    "data_ga_hadir": {"ga_hadir": ga_hadir_count},
+    "ga_hadir_list": ga_hadir_list,
+  }
+
+
+async def get_pengajuan(tgl: str | None = None):
+  query = PengajuanAbsen.all()
+  if tgl:
+    query = query.filter(tanggal_mulai=date.fromisoformat(tgl))
+  else:
+    query = query.filter(tanggal_mulai=date.today())
+
+  rows = await query.order_by("-id_pengajuan").values(
+    "id_pengajuan",
+    "id_karyawan",
+    "tipe_pengajuan",
+    "tanggal_mulai",
+    "tanggal_akhir",
+    "foto_lampiran",
+    "keterangan",
+    "status",
+    "alasan_penolakan",
+    "karyawan__nama_karyawan",
+  )
+  return [
+    {
+      "id_pengajuan": row["id_pengajuan"],
+      "id_karyawan": row["id_karyawan"],
+      "tipe_pengajuan": row["tipe_pengajuan"],
+      "tanggal_mulai": row["tanggal_mulai"],
+      "tanggal_akhir": row["tanggal_akhir"],
+      "foto_lampiran": row["foto_lampiran"],
+      "keterangan": row["keterangan"],
+      "status": row["status"],
+      "alasan_penolakan": row["alasan_penolakan"],
+      "nama_karyawan": row["karyawan__nama_karyawan"],
+    }
+    for row in rows
+  ]
 
 
 def _format_str_date(params: str) -> str:

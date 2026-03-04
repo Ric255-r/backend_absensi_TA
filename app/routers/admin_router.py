@@ -15,7 +15,17 @@ from app.schemas.requests.admin import (
   UpdatePengajuanRequest,
   UpdateStatusAbsensiRequest,
 )
-from app.schemas.responses import APIMessage, HariLiburResponse
+from app.schemas.responses import (
+  AkunItemResponse,
+  APIMessage,
+  DataDashboardResponse,
+  DepartemenItemResponse,
+  HariLiburResponse,
+  JadwalItemResponse,
+  KaryawanItemResponse,
+  KonfigurasiItemResponse,
+  PengajuanItemResponse,
+)
 from jwt_auth import verify_jwt
 
 router = APIRouter(
@@ -70,7 +80,7 @@ async def regis_hari_libur(payload: HariLiburCreateRequest):
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_karyawan")
+@router.get("/get_karyawan", response_model=KaryawanItemResponse | list[KaryawanItemResponse] | None)
 async def get_karyawan(id_karyawan: str | None = Query(None)):
   try:
     return await admin_controller.get_karyawan(id_karyawan=id_karyawan)
@@ -78,7 +88,7 @@ async def get_karyawan(id_karyawan: str | None = Query(None)):
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_akun")
+@router.get("/get_akun", response_model=list[AkunItemResponse])
 async def get_akun():
   try:
     return await admin_controller.get_akun()
@@ -86,7 +96,7 @@ async def get_akun():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_exists_akun")
+@router.get("/get_exists_akun", response_model=list[AkunItemResponse])
 async def get_exists_akun(username: str):
   try:
     return await admin_controller.get_akun(username=username)
@@ -94,7 +104,7 @@ async def get_exists_akun(username: str):
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_departemen")
+@router.get("/get_departemen", response_model=list[DepartemenItemResponse])
 async def get_departemen():
   try:
     return await admin_controller.get_departemen()
@@ -102,7 +112,7 @@ async def get_departemen():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_jadwal")
+@router.get("/get_jadwal", response_model=list[JadwalItemResponse])
 async def get_jadwal():
   try:
     return await admin_controller.get_jadwal()
@@ -110,10 +120,34 @@ async def get_jadwal():
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_konfigurasi")
+@router.get("/get_konfigurasi", response_model=KonfigurasiItemResponse | None)
 async def get_konfigurasi():
   try:
     return await admin_controller.get_konfigurasi()
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.get("/get_data_dashboard", response_model=DataDashboardResponse)
+async def get_data_dashboard(tgl: str | None = Query(None)):
+  try:
+    return await admin_controller.get_data_dashboard(tgl=tgl)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.get("/get_pengajuan", response_model=list[PengajuanItemResponse])
+async def get_pengajuan(tgl: str | None = Query(None)):
+  try:
+    return await admin_controller.get_pengajuan(tgl=tgl)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
