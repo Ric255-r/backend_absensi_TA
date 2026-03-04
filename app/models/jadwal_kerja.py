@@ -1,8 +1,8 @@
-﻿from tortoise import fields
-from tortoise.models import Model
+from tortoise import fields
+from app.core.audit import AuditableModel
 
 
-class JadwalKerja(Model):
+class JadwalKerja(AuditableModel):
   id_jadwal = fields.IntField(pk=True)
   nama_shift = fields.CharField(max_length=20, default="pagi")
   hari_dalam_seminggu = fields.CharField(max_length=20)
@@ -11,3 +11,4 @@ class JadwalKerja(Model):
 
   class Meta:
     table = "jadwal_kerja"
+

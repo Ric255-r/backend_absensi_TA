@@ -1,8 +1,8 @@
-﻿from tortoise import fields
-from tortoise.models import Model
+from tortoise import fields
+from app.core.audit import AuditableModel
 
 
-class PengajuanAbsen(Model):
+class PengajuanAbsen(AuditableModel):
   id_pengajuan = fields.IntField(pk=True)
   karyawan = fields.ForeignKeyField(
     "models.Karyawan",
@@ -20,3 +20,4 @@ class PengajuanAbsen(Model):
 
   class Meta:
     table = "pengajuan_absen"
+

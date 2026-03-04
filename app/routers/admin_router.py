@@ -3,6 +3,7 @@ from fastapi_jwt import JwtAuthorizationCredentials
 from fastapi.responses import JSONResponse
 
 from app.controllers import admin_controller
+from app.core.audit import enable_audit, set_audit_actor
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
@@ -29,10 +30,16 @@ from app.schemas.responses import (
 )
 from jwt_auth import verify_jwt
 
+
+def verify_jwt_admin(user: JwtAuthorizationCredentials = Depends(verify_jwt)):
+  enable_audit(True)
+  set_audit_actor(user)
+  return user
+
 router = APIRouter(
   prefix="/admin",
   tags=["Admin"],
-  dependencies=[Depends(verify_jwt)],
+  dependencies=[Depends(verify_jwt_admin)],
 )
 
 
@@ -195,7 +202,7 @@ async def export_excel(
 async def update_karyawan(
   id_karyawan: str,
   payload: KaryawanUpdateRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_karyawan(id_karyawan, payload, actor=user)
@@ -211,7 +218,7 @@ async def update_karyawan(
 async def update_akun(
   username: str,
   payload: AkunUpdateRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_akun(username, payload, actor=user)
@@ -227,7 +234,7 @@ async def update_akun(
 async def update_konfigurasi(
   id_pengaturan: int,
   payload: KonfigurasiUpdateRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_konfigurasi(id_pengaturan, payload, actor=user)
@@ -243,7 +250,7 @@ async def update_konfigurasi(
 async def update_jadwal(
   id_jadwal: int,
   payload: JadwalUpdateRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_jadwal(id_jadwal, payload, actor=user)
@@ -259,7 +266,7 @@ async def update_jadwal(
 async def update_hari_libur(
   id_libur: int,
   payload: HariLiburUpdateRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_hari_libur(id_libur, payload, actor=user)
@@ -274,7 +281,7 @@ async def update_hari_libur(
 @router.put("/unbind_device/{username}", response_model=APIMessage)
 async def unbind_device(
   username: str,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.unbind_device(username, actor=user)
@@ -288,7 +295,7 @@ async def unbind_device(
 @router.put("/update_status_absensi", response_model=APIMessage)
 async def update_status_absensi(
   payload: UpdateStatusAbsensiRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_status_absensi(payload, actor=user)
@@ -303,7 +310,7 @@ async def update_status_absensi(
 @router.put("/update_pengajuan", response_model=APIMessage)
 async def update_pengajuan(
   payload: UpdatePengajuanRequest,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.update_pengajuan(payload, actor=user)
@@ -318,7 +325,7 @@ async def update_pengajuan(
 @router.delete("/delete_karyawan/{id_karyawan}", response_model=APIMessage)
 async def delete_karyawan(
   id_karyawan: str,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.delete_karyawan(id_karyawan, actor=user)
@@ -333,7 +340,7 @@ async def delete_karyawan(
 @router.delete("/delete_akun/{username}", response_model=APIMessage)
 async def delete_akun(
   username: str,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.delete_akun(username, actor=user)
@@ -348,7 +355,7 @@ async def delete_akun(
 @router.delete("/delete_departemen/{id_departemen}", response_model=APIMessage)
 async def delete_departemen(
   id_departemen: int,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.delete_departemen(id_departemen, actor=user)
@@ -363,7 +370,7 @@ async def delete_departemen(
 @router.delete("/hari_libur/{id_libur}", response_model=APIMessage)
 async def delete_hari_libur(
   id_libur: int,
-  user: JwtAuthorizationCredentials = Depends(verify_jwt),
+  user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
     return await admin_controller.delete_hari_libur(id_libur, actor=user)
@@ -373,3 +380,4 @@ async def delete_hari_libur(
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+

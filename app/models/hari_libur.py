@@ -1,8 +1,8 @@
 from tortoise import fields
-from tortoise.models import Model
+from app.core.audit import AuditableModel
 
 
-class HariLibur(Model):
+class HariLibur(AuditableModel):
   id_libur = fields.IntField(pk=True)
   tanggal = fields.DateField()
   keterangan = fields.CharField(max_length=255)
@@ -10,3 +10,4 @@ class HariLibur(Model):
 
   class Meta:
     table = "hari_libur"
+

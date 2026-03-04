@@ -25,7 +25,7 @@ from app.models import (
   PengajuanAbsen,
 )
 from app.models.absensi import Absensi
-from app.core.audit import log_audit
+from app.core.audit import audit_action, log_audit
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
@@ -880,33 +880,20 @@ async def update_karyawan(
   payload: KaryawanUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  karyawan = await Karyawan.filter(id_karyawan=id_karyawan).first()
+  if not karyawan:
     raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
 
-  tanggal_rekrut = (
+  karyawan.nama_karyawan = payload.nama_karyawan
+  karyawan.email_karyawan = payload.email_karyawan
+  karyawan.nomor_hp = payload.nomor_hp
+  karyawan.tanggal_rekrut = (
     date.fromisoformat(payload.tanggal_rekrut) if payload.tanggal_rekrut else None
   )
-  await Karyawan.filter(id_karyawan=id_karyawan).update(
-    nama_karyawan=payload.nama_karyawan,
-    email_karyawan=payload.email_karyawan,
-    nomor_hp=payload.nomor_hp,
-    tanggal_rekrut=tanggal_rekrut,
-    status=payload.status,
-    departemen_id=payload.id_departemen,
-    posisi=payload.posisi,
-  )
-  after = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values()
-  after_row = after[0] if after else None
-  await log_audit(
-    actor=actor,
-    action="edit",
-    table_name="karyawan",
-    record_id=id_karyawan,
-    before_data=before_row,
-    after_data=after_row,
-  )
+  karyawan.status = payload.status
+  karyawan.id_departemen = payload.id_departemen
+  karyawan.posisi = payload.posisi
+  await karyawan.save()
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
@@ -915,29 +902,15 @@ async def update_akun(
   payload: AkunUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await Akun.filter(username=username).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  akun = await Akun.filter(username=username).first()
+  if not akun:
     raise HTTPException(status_code=404, detail="Data akun tidak ditemukan")
 
-  passwd = hashlib.md5(str(payload.passwd).encode()).hexdigest()
-  status = "aktif" if payload.status else "nonaktif"
-  await Akun.filter(username=username).update(
-    passwd=passwd,
-    roles=payload.roles,
-    karyawan_id=payload.id_karyawan,
-    status=status,
-  )
-  after = await Akun.filter(username=username).limit(1).values()
-  after_row = after[0] if after else None
-  await log_audit(
-    actor=actor,
-    action="edit",
-    table_name="akun",
-    record_id=username,
-    before_data=before_row,
-    after_data=after_row,
-  )
+  akun.passwd = hashlib.md5(str(payload.passwd).encode()).hexdigest()
+  akun.roles = payload.roles
+  akun.id_karyawan = payload.id_karyawan
+  akun.status = "aktif" if payload.status else "nonaktif"
+  await akun.save()
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
@@ -946,29 +919,13 @@ async def update_konfigurasi(
   payload: KonfigurasiUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = (
-    await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
-  )
-  before_row = before[0] if before else None
-  if not before_row:
+  konfigurasi = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).first()
+  if not konfigurasi:
     raise HTTPException(status_code=404, detail="Konfigurasi tidak ditemukan")
 
-  await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).update(
-    toleransi_terlambat=payload.toleransi_terlambat,
-    maks_hari_cuti=payload.maks_hari_cuti,
-  )
-  after = (
-    await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).limit(1).values()
-  )
-  after_row = after[0] if after else None
-  await log_audit(
-    actor=actor,
-    action="edit",
-    table_name="konfigurasi_aplikasi",
-    record_id=id_pengaturan,
-    before_data=before_row,
-    after_data=after_row,
-  )
+  konfigurasi.toleransi_terlambat = payload.toleransi_terlambat
+  konfigurasi.maks_hari_cuti = payload.maks_hari_cuti
+  await konfigurasi.save()
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
@@ -977,31 +934,21 @@ async def update_jadwal(
   payload: JadwalUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  fields_to_update = {}
-  if payload.shift_mulai:
-    fields_to_update["shift_mulai"] = time.fromisoformat(payload.shift_mulai)
-  if payload.shift_selesai:
-    fields_to_update["shift_selesai"] = time.fromisoformat(payload.shift_selesai)
-
-  if not fields_to_update:
+  if not payload.shift_mulai and not payload.shift_selesai:
     raise HTTPException(status_code=400, detail="Tidak ada field jadwal yang diupdate")
 
-  before = await JadwalKerja.filter(id_jadwal=id_jadwal).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  jadwal = await JadwalKerja.filter(id_jadwal=id_jadwal).first()
+  if not jadwal:
     raise HTTPException(status_code=404, detail="Jadwal tidak ditemukan")
 
-  await JadwalKerja.filter(id_jadwal=id_jadwal).update(**fields_to_update)
-  after = await JadwalKerja.filter(id_jadwal=id_jadwal).limit(1).values()
-  after_row = after[0] if after else None
-  await log_audit(
-    actor=actor,
-    action="edit",
-    table_name="jadwal_kerja",
-    record_id=id_jadwal,
-    before_data=before_row,
-    after_data=after_row,
-  )
+  update_fields: list[str] = []
+  if payload.shift_mulai:
+    jadwal.shift_mulai = time.fromisoformat(payload.shift_mulai)
+    update_fields.append("shift_mulai")
+  if payload.shift_selesai:
+    jadwal.shift_selesai = time.fromisoformat(payload.shift_selesai)
+    update_fields.append("shift_selesai")
+  await jadwal.save(update_fields=update_fields)
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
@@ -1010,26 +957,14 @@ async def update_hari_libur(
   payload: HariLiburUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await HariLibur.filter(id_libur=id_libur).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  hari_libur = await HariLibur.filter(id_libur=id_libur).first()
+  if not hari_libur:
     raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
 
-  await HariLibur.filter(id_libur=id_libur).update(
-    tanggal=date.fromisoformat(payload.tanggal),
-    keterangan=payload.keterangan,
-    tipe=payload.tipe,
-  )
-  after = await HariLibur.filter(id_libur=id_libur).limit(1).values()
-  after_row = after[0] if after else None
-  await log_audit(
-    actor=actor,
-    action="edit",
-    table_name="hari_libur",
-    record_id=id_libur,
-    before_data=before_row,
-    after_data=after_row,
-  )
+  hari_libur.tanggal = date.fromisoformat(payload.tanggal)
+  hari_libur.keterangan = payload.keterangan
+  hari_libur.tipe = payload.tipe
+  await hari_libur.save()
   return {"status": "ok", "message": "Sukses Update Data"}
 
 
@@ -1040,51 +975,24 @@ async def update_status_absensi(
 ):
   if is_bulk and payload.updated_bulk_data:
     for item in payload.updated_bulk_data:
-      before = (
-        await Absensi.filter(
-          id_absensi=item["id_absensi"],
-          karyawan_id=item["id_karyawan"],
-        )
-        .limit(1)
-        .values()
-      )
-      before_row = before[0] if before else None
-      if not before_row:
-        continue
-
-      await Absensi.filter(
+      absensi = await Absensi.filter(
         id_absensi=item["id_absensi"],
         karyawan_id=item["id_karyawan"],
-      ).update(
-        status_absen=item["status_absen"],
-        alasan_penolakan=item.get("alasan_penolakan", None),
-      )
-      after = (
-        await Absensi.filter(
-          id_absensi=item["id_absensi"],
-          karyawan_id=item["id_karyawan"],
-        )
-        .limit(1)
-        .values()
-      )
-      after_row = after[0] if after else None
+      ).first()
+      if not absensi:
+        continue
 
-      audit_action = (
+      action_name = (
         "approve"
         if item["status_absen"] == "approved"
         else "reject"
         if item["status_absen"] == "rejected"
         else "edit"
       )
-      await log_audit(
-        actor=actor,
-        action=audit_action,
-        table_name="absensi",
-        record_id=item["id_absensi"],
-        before_data=before_row,
-        after_data=after_row,
-        metadata={"mode": "bulk"},
-      )
+      absensi.status_absen = item["status_absen"]
+      absensi.alasan_penolakan = item.get("alasan_penolakan", None)
+      with audit_action(action_name, {"mode": "bulk"}):
+        await absensi.save(update_fields=["status_absen", "alasan_penolakan"])
 
       log_message = (
         f"ADMIN  MENGUPDATE STATUS ABSENSI untuk Karyawan [{item['id_karyawan']}] "
@@ -1103,51 +1011,26 @@ async def update_status_absensi(
           )
         )
   else:
-    before = (
-      await Absensi.filter(
-        id_absensi=payload.id_absensi,
-        karyawan_id=payload.id_karyawan,
-      )
-      .limit(1)
-      .values()
-    )
-    before_row = before[0] if before else None
-    if not before_row:
-      raise HTTPException(status_code=404, detail="Data absensi tidak ditemukan")
-
-    await Absensi.filter(
+    absensi = await Absensi.filter(
       id_absensi=payload.id_absensi,
       karyawan_id=payload.id_karyawan,
-    ).update(
-      status_absen=payload.status_absen,
-      alasan_penolakan=payload.alasan_penolakan if payload.alasan_penolakan else None,
-    )
-    after = (
-      await Absensi.filter(
-        id_absensi=payload.id_absensi,
-        karyawan_id=payload.id_karyawan,
-      )
-      .limit(1)
-      .values()
-    )
-    after_row = after[0] if after else None
+    ).first()
+    if not absensi:
+      raise HTTPException(status_code=404, detail="Data absensi tidak ditemukan")
 
-    audit_action = (
+    action_name = (
       "approve"
       if payload.status_absen == "approved"
       else "reject"
       if payload.status_absen == "rejected"
       else "edit"
     )
-    await log_audit(
-      actor=actor,
-      action=audit_action,
-      table_name="absensi",
-      record_id=payload.id_absensi,
-      before_data=before_row,
-      after_data=after_row,
-      metadata={"mode": "single"},
+    absensi.status_absen = payload.status_absen
+    absensi.alasan_penolakan = (
+      payload.alasan_penolakan if payload.alasan_penolakan else None
     )
+    with audit_action(action_name, {"mode": "single"}):
+      await absensi.save(update_fields=["status_absen", "alasan_penolakan"])
 
     log_message = (
       f"ADMIN  MENGUPDATE STATUS ABSENSI untuk Karyawan [{payload.id_karyawan}] "
@@ -1325,23 +1208,13 @@ async def unbind_device(
   username: str,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await Akun.filter(username=username).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  akun = await Akun.filter(username=username).first()
+  if not akun:
     raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
 
-  await Akun.filter(username=username).update(device_id=None)
-  after = await Akun.filter(username=username).limit(1).values()
-  after_row = after[0] if after else None
-  await log_audit(
-    actor=actor,
-    action="edit",
-    table_name="akun",
-    record_id=username,
-    before_data=before_row,
-    after_data=after_row,
-    metadata={"activity": "unbind_device"},
-  )
+  akun.device_id = None
+  with audit_action("edit", {"activity": "unbind_device"}):
+    await akun.save(update_fields=["device_id"])
   return {"status": "ok", "message": "Sukses Unbind Device Data"}
 
 
@@ -1349,19 +1222,10 @@ async def delete_karyawan(
   id_karyawan: str,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  karyawan = await Karyawan.filter(id_karyawan=id_karyawan).first()
+  if not karyawan:
     raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
-  await Karyawan.filter(id_karyawan=id_karyawan).delete()
-  await log_audit(
-    actor=actor,
-    action="delete",
-    table_name="karyawan",
-    record_id=id_karyawan,
-    before_data=before_row,
-    after_data=None,
-  )
+  await karyawan.delete()
   return {"status": "ok", "message": "Sukses Delete Data"}
 
 
@@ -1369,19 +1233,10 @@ async def delete_akun(
   username: str,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await Akun.filter(username=username).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  akun = await Akun.filter(username=username).first()
+  if not akun:
     raise HTTPException(status_code=404, detail="Data akun tidak ditemukan")
-  await Akun.filter(username=username).delete()
-  await log_audit(
-    actor=actor,
-    action="delete",
-    table_name="akun",
-    record_id=username,
-    before_data=before_row,
-    after_data=None,
-  )
+  await akun.delete()
   return {"status": "ok", "message": "Sukses Delete Data"}
 
 
@@ -1389,19 +1244,10 @@ async def delete_departemen(
   id_departemen: int,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await Departemen.filter(id_departemen=id_departemen).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  departemen = await Departemen.filter(id_departemen=id_departemen).first()
+  if not departemen:
     raise HTTPException(status_code=404, detail="Data departemen tidak ditemukan")
-  await Departemen.filter(id_departemen=id_departemen).delete()
-  await log_audit(
-    actor=actor,
-    action="delete",
-    table_name="departemen",
-    record_id=id_departemen,
-    before_data=before_row,
-    after_data=None,
-  )
+  await departemen.delete()
   return {"status": "ok", "message": "Sukses Delete Data"}
 
 
@@ -1409,17 +1255,8 @@ async def delete_hari_libur(
   id_libur: int,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  before = await HariLibur.filter(id_libur=id_libur).limit(1).values()
-  before_row = before[0] if before else None
-  if not before_row:
+  hari_libur = await HariLibur.filter(id_libur=id_libur).first()
+  if not hari_libur:
     raise HTTPException(status_code=404, detail="Data hari libur tidak ditemukan")
-  await HariLibur.filter(id_libur=id_libur).delete()
-  await log_audit(
-    actor=actor,
-    action="delete",
-    table_name="hari_libur",
-    record_id=id_libur,
-    before_data=before_row,
-    after_data=None,
-  )
+  await hari_libur.delete()
   return {"status": "ok", "message": "Sukses Delete Data"}

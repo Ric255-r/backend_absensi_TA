@@ -1,10 +1,11 @@
-﻿from tortoise import fields
-from tortoise.models import Model
+from tortoise import fields
+from app.core.audit import AuditableModel
 
 
-class Departemen(Model):
+class Departemen(AuditableModel):
   id_departemen = fields.IntField(pk=True)
   nama_departemen = fields.CharField(max_length=100)
 
   class Meta:
     table = "departemen"
+
