@@ -1063,6 +1063,10 @@ async def update_pengajuan(
   payload: UpdatePengajuanRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
+  """
+  Update_pengajuan masih punya 1 log_audit manual di admin_controller.py
+  karena flow transaksinya lebih kompleks (multi operasi).
+  """
   before_pengajuan = (
     await PengajuanAbsen.filter(
       id_pengajuan=payload.id_pengajuan,
