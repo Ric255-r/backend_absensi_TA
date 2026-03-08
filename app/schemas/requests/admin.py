@@ -44,6 +44,7 @@ class AkunUpdateRequest(BaseModel):
 
 
 class KonfigurasiUpdateRequest(BaseModel):
+  id_pengaturan: int
   toleransi_terlambat: int
   maks_hari_cuti: int
 
@@ -63,6 +64,7 @@ class HariLiburUpdateRequest(BaseModel):
   tanggal: str
   keterangan: str
   tipe: Literal["libur_nasional", "cuti_bersama"]
+
 
 class UpdateStatusAbsensiRequest(BaseModel):
   status_absen: str

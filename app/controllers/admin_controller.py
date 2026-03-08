@@ -915,11 +915,12 @@ async def update_akun(
 
 
 async def update_konfigurasi(
-  id_pengaturan: int,
   payload: KonfigurasiUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  konfigurasi = await KonfigurasiAplikasi.filter(id_pengaturan=id_pengaturan).first()
+  konfigurasi = await KonfigurasiAplikasi.filter(
+    id_pengaturan=payload.id_pengaturan
+  ).first()
   if not konfigurasi:
     raise HTTPException(status_code=404, detail="Konfigurasi tidak ditemukan")
 
