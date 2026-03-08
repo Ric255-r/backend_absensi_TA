@@ -26,6 +26,7 @@ from app.models import (
 )
 from app.models.absensi import Absensi
 from app.core.audit import audit_action, log_audit
+from app.models.jadwal_mingguan_karyawan import JadwalMingguanKaryawan
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
@@ -171,9 +172,43 @@ async def get_departemen():
   return await Departemen.all().values("id_departemen", "nama_departemen")
 
 
+# def _normalize_db_time_value(value: time | timedelta | str | None) -> time | None:
+#   if value is None:
+#     return None
+#   if isinstance(value, time):
+#     return value
+#   if isinstance(value, timedelta):
+#     total_seconds = int(value.total_seconds()) % (24 * 3600)
+#     hours = total_seconds // 3600
+#     minutes = (total_seconds % 3600) // 60
+#     seconds = total_seconds % 60
+#     return time(hour=hours, minute=minutes, second=seconds)
+#   if isinstance(value, str):
+#     return time.fromisoformat(value)
+#   raise HTTPException(status_code=500, detail="Format waktu jadwal tidak valid")
+
+
 async def get_jadwal():
-  return await JadwalKerja.all().values(
+  rows = await JadwalKerja.all().values(
     "id_jadwal", "hari_dalam_seminggu", "shift_mulai", "shift_selesai"
+  )
+  return [
+    {
+      "id_jadwal": row["id_jadwal"],
+      "hari_dalam_seminggu": row["hari_dalam_seminggu"],
+      "shift_mulai": str(row.get("shift_mulai")),
+      "shift_selesai": str(row.get("shift_selesai")),
+    }
+    for row in rows
+  ]
+
+
+async def get_jadwal_karyawan(id_karyawan: str):
+  return await JadwalMingguanKaryawan.filter(id_karyawan=id_karyawan).values(
+    "id",
+    "id_karyawan",
+    "hari",
+    "kode_shift",
   )
 
 
