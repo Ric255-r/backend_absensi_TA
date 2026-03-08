@@ -4,6 +4,7 @@ from tortoise.models import Model
 
 class JadwalMingguanKaryawan(Model):
   id = fields.IntField(pk=True)
+  id_karyawan = fields.CharField(max_length=20)
   karyawan = fields.ForeignKeyField(
     "models.Karyawan",
     related_name="jadwal_mingguan_list",

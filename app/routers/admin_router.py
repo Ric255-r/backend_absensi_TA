@@ -28,6 +28,7 @@ from app.schemas.responses import (
   KonfigurasiItemResponse,
   PengajuanItemResponse,
 )
+from app.schemas.responses.admin import JadwalMingguanKaryawanItemResponse
 from jwt_auth import verify_jwt
 
 
@@ -128,6 +129,17 @@ async def get_departemen():
 async def get_jadwal():
   try:
     return await admin_controller.get_jadwal()
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.get(
+  "/get_jadwal_karyawan",
+  response_model=list[JadwalMingguanKaryawanItemResponse],
+)
+async def get_jadwal_karyawan(id_karyawan: str):
+  try:
+    return await admin_controller.get_jadwal_karyawan(id_karyawan=id_karyawan)
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
