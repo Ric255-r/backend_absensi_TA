@@ -17,6 +17,7 @@ class Absensi(AuditableModel):
   is_telat = fields.IntField(default=0)
   status_absen = fields.CharField(max_length=30, default="pending")
   alasan_penolakan = fields.TextField(null=True)
+  id_karyawan = fields.CharField(max_length=20)
   karyawan = fields.ForeignKeyField(
     "models.Karyawan",
     related_name="absensi_list",

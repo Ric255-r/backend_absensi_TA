@@ -4,6 +4,7 @@ from app.core.audit import AuditableModel
 
 class PengajuanAbsen(AuditableModel):
   id_pengajuan = fields.IntField(pk=True)
+  id_karyawan = fields.CharField(max_length=20)
   karyawan = fields.ForeignKeyField(
     "models.Karyawan",
     related_name="pengajuan_list",
@@ -20,4 +21,3 @@ class PengajuanAbsen(AuditableModel):
 
   class Meta:
     table = "pengajuan_absen"
-
