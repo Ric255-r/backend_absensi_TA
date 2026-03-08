@@ -31,10 +31,11 @@ from app.schemas.responses import (
 from jwt_auth import verify_jwt
 
 
-def verify_jwt_admin(user: JwtAuthorizationCredentials = Depends(verify_jwt)):
+async def verify_jwt_admin(user: JwtAuthorizationCredentials = Depends(verify_jwt)):
   enable_audit(True)
   set_audit_actor(user)
   return user
+
 
 router = APIRouter(
   prefix="/admin",
@@ -88,7 +89,10 @@ async def regis_hari_libur(payload: HariLiburCreateRequest):
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
-@router.get("/get_karyawan", response_model=KaryawanItemResponse | list[KaryawanItemResponse] | None)
+@router.get(
+  "/get_karyawan",
+  response_model=KaryawanItemResponse | list[KaryawanItemResponse] | None,
+)
 async def get_karyawan(id_karyawan: str | None = Query(None)):
   try:
     return await admin_controller.get_karyawan(id_karyawan=id_karyawan)
@@ -154,7 +158,9 @@ async def get_analytics(
   end_date: str | None = Query(None),
 ):
   try:
-    return await admin_controller.get_analytics(start_date=start_date, end_date=end_date)
+    return await admin_controller.get_analytics(
+      start_date=start_date, end_date=end_date
+    )
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code
@@ -232,12 +238,11 @@ async def update_akun(
 
 @router.put("/update_konfigurasi", response_model=APIMessage)
 async def update_konfigurasi(
-  id_pengaturan: int,
   payload: KonfigurasiUpdateRequest,
   user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
-    return await admin_controller.update_konfigurasi(id_pengaturan, payload, actor=user)
+    return await admin_controller.update_konfigurasi(payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code
@@ -291,7 +296,8 @@ async def unbind_device(
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
-  
+
+
 @router.put("/update_status_absensi", response_model=APIMessage)
 async def update_status_absensi(
   payload: UpdateStatusAbsensiRequest,
@@ -380,4 +386,3 @@ async def delete_hari_libur(
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
-
