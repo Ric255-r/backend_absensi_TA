@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -130,3 +130,17 @@ class PengajuanItemResponse(BaseModel):
   status: str
   alasan_penolakan: str | None = None
   nama_karyawan: str | None = None
+
+
+class DashboardAbsensiItemResponse(BaseModel):
+  id_absensi: int
+  id_karyawan: str
+  nama_karyawan: str | None = None
+  tanggal_absen: datetime
+  check_in: datetime | None = None
+  check_out: datetime | None = None
+  pengajuan: str
+  status_absen: str
+  is_telat: int
+  alasan_penolakan: str | None = None
+  foto_lampiran: str | None = None

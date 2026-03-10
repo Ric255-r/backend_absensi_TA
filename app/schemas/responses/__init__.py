@@ -8,6 +8,7 @@ from app.schemas.responses.admin import (
   KaryawanItemResponse,
   KonfigurasiItemResponse,
   PengajuanItemResponse,
+  DashboardAbsensiItemResponse,
 )
 from app.schemas.responses.auth import ConfirmBindResponse, LoginResponse
 from app.schemas.responses.common import APIMessage
@@ -25,4 +26,5 @@ __all__ = [
   "KonfigurasiItemResponse",
   "DataDashboardResponse",
   "PengajuanItemResponse",
+  "DashboardAbsensiItemResponse",
 ]

@@ -230,6 +230,82 @@ async def get_hari_libur():
   )
 
 
+async def get_absensi(tgl: str | None = None):
+  # 1. Tentukan rentang waktu pencarian (Default: Hari Ini)
+  # Kita konversi string 'YYYY-MM-DD' menjadi objek date
+  hari_ini = date.today()
+  tanggal_pencarian = date.fromisoformat(tgl) if tgl else hari_ini
+
+  # Absensi menggunakan Datetime, jadi kita buat batas awal (00:00) dan batas akhir (23:59)
+  waktu_mulai = datetime.combine(tanggal_pencarian, time.min)
+  waktu_selesai = waktu_mulai + timedelta(days=1)
+
+  # 2. Ambil data absensi utama dari database
+  # Kita sekalian mengambil nama karyawan dan nama departemen melalui relasi (join otomatis)
+  data_absensi_raw = await Absensi.filter(
+    tanggal_absen__gte=waktu_mulai,
+    tanggal_absen__lt=waktu_selesai
+  ).order_by("-tanggal_absen").values(
+    "id_absensi",
+    "id_karyawan",
+    "tanggal_absen",
+    "check_in",
+    "check_out",
+    "pengajuan",
+    "status_absen",
+    "is_telat",
+    "alasan_penolakan",
+    "karyawan__nama_karyawan",
+    "karyawan__departemen__nama_departemen"
+  )
+
+  # 3. Ambil data lampiran (foto) dari tabel pengajuan
+  # Karena foto lampiran ada di tabel berbeda (pengajuan_absen), kita cari yang sesuai tanggal
+  # Kita hanya mengambil pengajuan yang sudah disetujui (approved)
+  data_pengajuan = await PengajuanAbsen.filter(
+    tanggal_mulai__lte=tanggal_pencarian,
+    tanggal_akhir__gte=tanggal_pencarian,
+    status="approved"
+  ).values("id_karyawan", "foto_lampiran")
+
+  # Buat "Kamus" (Mapping) agar pencarian foto berdasarkan ID Karyawan menjadi sangat cepat
+  peta_foto_lampiran = {
+    item["id_karyawan"]: item["foto_lampiran"]
+    for item in data_pengajuan
+  }
+
+  # 4. Gabungkan dan rapikan format data untuk dikirim ke frontend
+  hasil_akhir = []
+  for data in data_absensi_raw:
+    # Cek tipe pengajuan (apakah cuti, izin, atau sakit)
+    tipe_pengajuan = (data.get("pengajuan") or "").lower()
+
+    # Tentukan apakah baris ini berhak mendapatkan foto lampiran
+    lampiran = None
+    if tipe_pengajuan in ["cuti", "izin", "sakit"]:
+      # Ambil foto dari kamus yang sudah kita buat di atas
+      lampiran = peta_foto_lampiran.get(data["id_karyawan"])
+
+    # Susun ulang dictionary agar nama field-nya bersih (tanpa double underscore)
+    item_bersih = {
+      "id_absensi": data["id_absensi"],
+      "id_karyawan": data["id_karyawan"],
+      "nama_karyawan": data["karyawan__nama_karyawan"],
+      "nama_departemen": data["karyawan__departemen__nama_departemen"],
+      "tanggal_absen": data["tanggal_absen"],
+      "check_in": data["check_in"],
+      "check_out": data["check_out"],
+      "pengajuan": data["pengajuan"],
+      "status_absen": data["status_absen"],
+      "is_telat": data["is_telat"],
+      "alasan_penolakan": data["alasan_penolakan"],
+      "foto_lampiran": lampiran
+    }
+    hasil_akhir.append(item_bersih)
+
+  return hasil_akhir
+
+
 async def get_data_dashboard(tgl: str | None = None):
   target_date = date.fromisoformat(tgl) if tgl else date.today()
   day_start = datetime.combine(target_date, time.min)

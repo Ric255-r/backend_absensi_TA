@@ -28,7 +28,10 @@ from app.schemas.responses import (
   KonfigurasiItemResponse,
   PengajuanItemResponse,
 )
-from app.schemas.responses.admin import JadwalMingguanKaryawanItemResponse
+from app.schemas.responses.admin import (
+  DashboardAbsensiItemResponse,
+  JadwalMingguanKaryawanItemResponse,
+)
 from jwt_auth import verify_jwt
 
 
@@ -82,6 +85,20 @@ async def regis_departemen(payload: DepartemenCreateRequest):
 async def regis_hari_libur(payload: HariLiburCreateRequest):
   try:
     return await admin_controller.regis_hari_libur(payload)
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail}, status_code=e.status_code
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.get("/get_absensi", response_model=list[DashboardAbsensiItemResponse])
+async def get_absensi(
+  tanggal_absen: str | None = Query(None),
+):
+  try:
+    return await admin_controller.get_absensi(tanggal_absen=tanggal_absen)
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code
