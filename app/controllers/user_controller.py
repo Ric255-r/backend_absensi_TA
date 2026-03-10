@@ -23,6 +23,16 @@ async def update_profile(form_data: dict, user: JwtAuthorizationCredentials) -> 
     file_location = os.path.join(FOTO_PROFILE, filename)
     save_upload_file(form_data["foto_profile"], file_location)
 
+  """
+  Bukan pointer. Di Python, ** pada update(**update_data) adalah operator untuk 
+  dictionary unpacking. Artinya isi dict ini, akan diurai 
+  menjadi spt ini pada method update ORM: 
+  update(
+    nama_karyawan=...,
+    email_karyawan=...,
+    nomor_hp=...,
+  )
+  """
   update_data = {
     "nama_karyawan": form_data.get("nama_karyawan"),
     "email_karyawan": form_data.get("email_karyawan"),
@@ -39,7 +49,9 @@ async def update_profile(form_data: dict, user: JwtAuthorizationCredentials) -> 
   return {"status": "ok", "message": "Sukses Simpan Data"}
 
 
-async def update_password(payload: PasswordUpdateRequest, user: JwtAuthorizationCredentials) -> dict:
+async def update_password(
+  payload: PasswordUpdateRequest, user: JwtAuthorizationCredentials
+) -> dict:
   account = await Akun.get_or_none(karyawan_id=user["id_karyawan"])
   if not account:
     raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
@@ -52,4 +64,3 @@ async def update_password(payload: PasswordUpdateRequest, user: JwtAuthorization
   await Akun.filter(karyawan_id=user["id_karyawan"]).update(passwd=new_pass)
 
   return {"status": "ok", "message": "Sukses Simpan Data"}
-
