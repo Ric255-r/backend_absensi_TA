@@ -27,6 +27,7 @@ class DepartemenCreateRequest(BaseModel):
 
 
 class KaryawanUpdateRequest(BaseModel):
+  id_karyawan: str
   nama_karyawan: str
   email_karyawan: str | None = None
   nomor_hp: str | None = None

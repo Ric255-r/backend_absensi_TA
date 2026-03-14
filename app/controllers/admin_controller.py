@@ -242,21 +242,24 @@ async def get_absensi(tgl: str | None = None):
 
   # 2. Ambil data absensi utama dari database
   # Kita sekalian mengambil nama karyawan dan nama departemen melalui relasi (join otomatis)
-  data_absensi_raw = await Absensi.filter(
-    tanggal_absen__gte=waktu_mulai,
-    tanggal_absen__lt=waktu_selesai
-  ).order_by("-tanggal_absen").values(
-    "id_absensi",
-    "id_karyawan",
-    "tanggal_absen",
-    "check_in",
-    "check_out",
-    "pengajuan",
-    "status_absen",
-    "is_telat",
-    "alasan_penolakan",
-    "karyawan__nama_karyawan",
-    "karyawan__departemen__nama_departemen"
+  data_absensi_raw = (
+    await Absensi.filter(
+      tanggal_absen__gte=waktu_mulai, tanggal_absen__lt=waktu_selesai
+    )
+    .order_by("-tanggal_absen")
+    .values(
+      "id_absensi",
+      "id_karyawan",
+      "tanggal_absen",
+      "check_in",
+      "check_out",
+      "pengajuan",
+      "status_absen",
+      "is_telat",
+      "alasan_penolakan",
+      "karyawan__nama_karyawan",
+      "karyawan__departemen__nama_departemen",
+    )
   )
 
   # 3. Ambil data lampiran (foto) dari tabel pengajuan
@@ -265,13 +268,12 @@ async def get_absensi(tgl: str | None = None):
   data_pengajuan = await PengajuanAbsen.filter(
     tanggal_mulai__lte=tanggal_pencarian,
     tanggal_akhir__gte=tanggal_pencarian,
-    status="approved"
+    status="approved",
   ).values("id_karyawan", "foto_lampiran")
 
   # Buat "Kamus" (Mapping) agar pencarian foto berdasarkan ID Karyawan menjadi sangat cepat
   peta_foto_lampiran = {
-    item["id_karyawan"]: item["foto_lampiran"]
-    for item in data_pengajuan
+    item["id_karyawan"]: item["foto_lampiran"] for item in data_pengajuan
   }
 
   # 4. Gabungkan dan rapikan format data untuk dikirim ke frontend
@@ -299,7 +301,7 @@ async def get_absensi(tgl: str | None = None):
       "status_absen": data["status_absen"],
       "is_telat": data["is_telat"],
       "alasan_penolakan": data["alasan_penolakan"],
-      "foto_lampiran": lampiran
+      "foto_lampiran": lampiran,
     }
     hasil_akhir.append(item_bersih)
 
@@ -987,11 +989,10 @@ async def export_excel(start_date: str | None = None, end_date: str | None = Non
 
 
 async def update_karyawan(
-  id_karyawan: str,
   payload: KaryawanUpdateRequest,
   actor: JwtAuthorizationCredentials | dict | None = None,
 ) -> dict:
-  karyawan = await Karyawan.filter(id_karyawan=id_karyawan).first()
+  karyawan = await Karyawan.filter(id_karyawan=payload.id_karyawan).first()
   if not karyawan:
     raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
 

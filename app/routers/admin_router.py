@@ -235,12 +235,11 @@ async def export_excel(
 
 @router.put("/update_karyawan", response_model=APIMessage)
 async def update_karyawan(
-  id_karyawan: str,
   payload: KaryawanUpdateRequest,
   user: JwtAuthorizationCredentials = Depends(verify_jwt_admin),
 ):
   try:
-    return await admin_controller.update_karyawan(id_karyawan, payload, actor=user)
+    return await admin_controller.update_karyawan(payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code
