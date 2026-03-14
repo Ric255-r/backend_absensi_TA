@@ -98,7 +98,7 @@ async def get_absensi(
   tanggal_absen: str | None = Query(None),
 ):
   try:
-    return await admin_controller.get_absensi(tanggal_absen=tanggal_absen)
+    return await admin_controller.get_absensi(tanggal_absen)
   except HTTPException as e:
     return JSONResponse(
       content={"status": "error", "message": e.detail}, status_code=e.status_code
