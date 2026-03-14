@@ -1,0 +1,8 @@
+.git
+.venv_absensi
+.vscode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log

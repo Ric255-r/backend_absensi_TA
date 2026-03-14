@@ -17,8 +17,6 @@ from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell import MergedCell
 from collections import defaultdict
-import win32com.client
-from pywintypes import com_error
 from utils.fn_log import logger
 
 app = APIRouter(prefix="/admin")
@@ -511,6 +509,14 @@ async def get_jadwal(request: Request):
 
 
 def excel_to_pdf(excel_path, pdf_path):
+  try:
+    import win32com.client
+    from pywintypes import com_error
+  except ImportError as exc:
+    raise RuntimeError(
+      "Fitur konversi Excel ke PDF hanya tersedia di Windows dengan pywin32 terpasang."
+    ) from exc
+
   excel = win32com.client.Dispatch("Excel.Application")
   excel.Visible = False  # Buat Excel Hidden
   excel.DisplayAlerts = False  # Lewati Alert

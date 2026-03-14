@@ -9,7 +9,7 @@ pandas==2.0.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-multipart==0.0.9
-pywin32==310
+pywin32==310; platform_system == "Windows"
 starlette==0.37.2
 tortoise-orm==0.25.1
 aerich==0.8.2
