@@ -2,6 +2,7 @@ jwt_auth.py
 koneksi_config.txt
 admin_info.log
 user_info.log
+storage/logs/*.log
 __pycache__/
 *.pyc
 .venv_absensi

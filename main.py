@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi import APIRouter
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.database import init_tortoise
 from app.routers import api_router
@@ -14,6 +16,9 @@ from api_legacy.users.absensi import app as legacy_absensi
 from api_legacy.users.update_profile import app as legacy_profile_user
 from services.login import app as legacy_login
 from services.seeder import app as legacy_seeder
+from utils.logging_config import app_logger, configure_uvicorn_logging, error_logger
+
+configure_uvicorn_logging()
 
 app = FastAPI()
 app.add_middleware(
@@ -23,6 +28,20 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+  error_logger.exception(
+    "Unhandled exception on %s %s",
+    request.method,
+    request.url.path,
+  )
+  return JSONResponse(
+    status_code=500,
+    content={"detail": "Internal Server Error"},
+  )
+
 
 init_tortoise(app)
 app.include_router(api_router)
@@ -40,6 +59,8 @@ legacy_router.include_router(legacy_update_admin)
 legacy_router.include_router(legacy_profile_user)
 legacy_router.include_router(legacy_seeder)
 app.include_router(legacy_router)
+
+app_logger.info("Application routes loaded")
 
 # bawaan default
 if __name__ == "__main__":
