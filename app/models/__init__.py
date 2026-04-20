@@ -8,6 +8,7 @@ from app.models.jadwal_mingguan_karyawan import JadwalMingguanKaryawan
 from app.models.karyawan import Karyawan
 from app.models.konfigurasi_aplikasi import KonfigurasiAplikasi
 from app.models.pengajuan_absen import PengajuanAbsen
+from app.models.subscription import Subscription
 
 __all__ = [
   "Akun",
@@ -20,4 +21,5 @@ __all__ = [
   "JadwalKerja",
   "JadwalMingguanKaryawan",
   "HariLibur",
+  "Subscription",
 ]

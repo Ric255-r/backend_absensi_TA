@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from fastapi_jwt import JwtAuthorizationCredentials
 
 from app.core.serializer import serialize_data
+from app.core.subscription import ensure_active_subscription_or_raise
 from app.models import Akun
 from app.schemas.requests.auth import LoginRequest
 from jwt_auth import access_security, refresh_security
@@ -15,6 +16,8 @@ def _token_subject(auth_user: JwtAuthorizationCredentials | dict) -> dict:
 
 
 async def login_user(payload: LoginRequest) -> dict:
+  await ensure_active_subscription_or_raise()
+
   user_data_rows = await Akun.filter(username=payload.username).limit(1).values(
     "username",
     "passwd",
@@ -145,6 +148,8 @@ async def confirm_bind(auth_user: JwtAuthorizationCredentials) -> dict:
 async def refresh_user_token(auth_user: JwtAuthorizationCredentials) -> dict:
   if not auth_user:
     raise HTTPException(status_code=401, detail="Invalid token payload")
+
+  await ensure_active_subscription_or_raise()
   subject = _token_subject(auth_user)
 
   item = await Akun.filter(karyawan_id=subject["id_karyawan"]).limit(1).values(

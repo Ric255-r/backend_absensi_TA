@@ -1,15 +1,15 @@
 ﻿import os
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Security
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi_jwt import JwtAuthorizationCredentials
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
 from app.controllers.absensi_controller import get_attendance_data, validate_check_in_attendance, validate_check_out_attendance, store_check_in_attendance, store_check_out_attendance
+from app.dependencies import require_active_subscription
 from app.schemas.requests.absensi import CheckInRequest, CheckOutRequest
-from jwt_auth import access_security
 
 router = APIRouter(prefix="/absen", tags=["Absensi"])
 
@@ -41,7 +41,7 @@ def get_foto_checkout(filename: str):
 async def get_my_absen(
   month: Optional[str] = Query(None),
   year: Optional[str] = Query(None),
-  user: JwtAuthorizationCredentials = Security(access_security),
+  user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     return await get_attendance_data(
@@ -68,7 +68,7 @@ async def get_my_absen(
 
 @router.get("/check_in")
 async def get_check_in(
-  user: JwtAuthorizationCredentials = Security(access_security),
+  user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     return await validate_check_in_attendance(user=user)
@@ -91,7 +91,7 @@ async def get_check_in(
   
 @router.get("/check_out")
 async def get_check_out(
-  user: JwtAuthorizationCredentials = Security(access_security),
+  user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     return await validate_check_out_attendance(user=user)
@@ -117,7 +117,7 @@ async def get_check_out(
 async def store_check_in(
   request: Request,
   background_task: BackgroundTasks,
-  user: JwtAuthorizationCredentials = Security(access_security),
+  user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     form = await request.form()
@@ -158,7 +158,7 @@ async def store_check_in(
 async def store_check_out(
   request: Request,
   background_task: BackgroundTasks,
-  user: JwtAuthorizationCredentials = Security(access_security),
+  user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     form = await request.form()

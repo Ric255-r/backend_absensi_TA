@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.responses import JSONResponse
 from fastapi_jwt import JwtAuthorizationCredentials
 
@@ -8,8 +8,9 @@ from app.controllers.auth_controller import (
   login_user,
   refresh_user_token,
 )
+from app.dependencies import require_active_subscription
 from app.schemas.requests.auth import LoginRequest
-from jwt_auth import access_security, refresh_security
+from jwt_auth import refresh_security
 
 router = APIRouter(tags=["Auth"])
 
@@ -33,7 +34,7 @@ async def login(payload: LoginRequest):
 @router.get("/user")
 async def user(
   is_admin: bool = False,
-  auth_user: JwtAuthorizationCredentials = Security(access_security),
+  auth_user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     return await get_current_user(auth_user=auth_user, is_admin=is_admin)
@@ -51,7 +52,7 @@ async def user(
 
 @router.put("/confirm-bind")
 async def confirm_bind_route(
-  auth_user: JwtAuthorizationCredentials = Security(access_security),
+  auth_user: JwtAuthorizationCredentials = Depends(require_active_subscription),
 ):
   try:
     return await confirm_bind(auth_user)
@@ -83,4 +84,3 @@ async def refresh_token(
       content={"status": "error", "message": f"Koneksi Error {str(e)}"},
       status_code=500,
     )
-

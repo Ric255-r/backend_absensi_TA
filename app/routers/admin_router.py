@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi_jwt import JwtAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from fastapi_jwt import JwtAuthorizationCredentials
 
 from app.controllers import admin_controller
 from app.core.audit import enable_audit, set_audit_actor
+from app.dependencies import require_active_admin_subscription
 from app.schemas.requests.admin import (
   AkunCreateRequest,
   AkunUpdateRequest,
@@ -18,8 +19,8 @@ from app.schemas.requests.admin import (
   UpdateStatusAbsensiRequest,
 )
 from app.schemas.responses import (
-  AkunItemResponse,
   APIMessage,
+  AkunItemResponse,
   DataDashboardResponse,
   DepartemenItemResponse,
   HariLiburResponse,
@@ -32,10 +33,11 @@ from app.schemas.responses.admin import (
   DashboardAbsensiItemResponse,
   JadwalMingguanKaryawanItemResponse,
 )
-from jwt_auth import verify_jwt
 
 
-async def verify_jwt_admin(user: JwtAuthorizationCredentials = Depends(verify_jwt)):
+async def verify_jwt_admin(
+  user: JwtAuthorizationCredentials = Depends(require_active_admin_subscription),
+):
   enable_audit(True)
   set_audit_actor(user)
   return user
@@ -87,7 +89,8 @@ async def regis_hari_libur(payload: HariLiburCreateRequest):
     return await admin_controller.regis_hari_libur(payload)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -101,7 +104,8 @@ async def get_absensi(
     return await admin_controller.get_absensi(tanggal_absen)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -175,7 +179,8 @@ async def get_data_dashboard(tgl: str | None = Query(None)):
     return await admin_controller.get_data_dashboard(tgl=tgl)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -188,11 +193,13 @@ async def get_analytics(
 ):
   try:
     return await admin_controller.get_analytics(
-      start_date=start_date, end_date=end_date
+      start_date=start_date,
+      end_date=end_date,
     )
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -204,7 +211,8 @@ async def get_pengajuan(tgl: str | None = Query(None)):
     return await admin_controller.get_pengajuan(tgl=tgl)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -227,7 +235,8 @@ async def export_excel(
     return await admin_controller.export_excel(start_date=start_date, end_date=end_date)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -242,7 +251,8 @@ async def update_karyawan(
     return await admin_controller.update_karyawan(payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -258,7 +268,8 @@ async def update_akun(
     return await admin_controller.update_akun(username, payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -273,7 +284,8 @@ async def update_konfigurasi(
     return await admin_controller.update_konfigurasi(payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -289,7 +301,8 @@ async def update_jadwal(
     return await admin_controller.update_jadwal(id_jadwal, payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -305,7 +318,8 @@ async def update_hari_libur(
     return await admin_controller.update_hari_libur(id_libur, payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -320,7 +334,8 @@ async def unbind_device(
     return await admin_controller.unbind_device(username, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -335,7 +350,8 @@ async def update_status_absensi(
     return await admin_controller.update_status_absensi(payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -350,7 +366,8 @@ async def update_pengajuan(
     return await admin_controller.update_pengajuan(payload, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -365,7 +382,8 @@ async def delete_karyawan(
     return await admin_controller.delete_karyawan(id_karyawan, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -380,7 +398,8 @@ async def delete_akun(
     return await admin_controller.delete_akun(username, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -395,7 +414,8 @@ async def delete_departemen(
     return await admin_controller.delete_departemen(id_departemen, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -410,7 +430,8 @@ async def delete_hari_libur(
     return await admin_controller.delete_hari_libur(id_libur, actor=user)
   except HTTPException as e:
     return JSONResponse(
-      content={"status": "error", "message": e.detail}, status_code=e.status_code
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
     )
   except Exception as e:
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
