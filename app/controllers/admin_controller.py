@@ -747,6 +747,198 @@ async def get_analytics(start_date: str | None = None, end_date: str | None = No
   }
 
 
+def _weekday_name(date_value: date) -> str:
+  days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+  return days[date_value.weekday()]
+
+
+def _empty_trend_item(label: str) -> dict:
+  return {
+    "period": label,
+    "hadir": 0,
+    "tidak_hadir": 0,
+    "pending": 0,
+    "telat": 0,
+  }
+
+
+async def get_employee_attendance_analytics(
+  id_karyawan: str,
+  start_date: str | None = None,
+  end_date: str | None = None,
+) -> dict:
+  start_d, end_d = _resolve_analytics_range(start_date, end_date)
+  start_dt = datetime.combine(start_d, time.min)
+  end_dt = datetime.combine(end_d + timedelta(days=1), time.min)
+  days_count = (end_d - start_d).days + 1
+
+  employee_rows = await Karyawan.filter(id_karyawan=id_karyawan).limit(1).values(
+    "id_karyawan",
+    "nama_karyawan",
+    "posisi",
+    "departemen__nama_departemen",
+  )
+  employee = employee_rows[0] if employee_rows else None
+  if not employee:
+    raise HTTPException(status_code=404, detail="Data karyawan tidak ditemukan")
+
+  absensi_rows = await Absensi.filter(
+    id_karyawan=id_karyawan,
+    tanggal_absen__gte=start_dt,
+    tanggal_absen__lt=end_dt,
+  ).order_by("tanggal_absen").values(
+    "id_absensi",
+    "tanggal_absen",
+    "check_in",
+    "check_out",
+    "pengajuan",
+    "status_absen",
+    "is_telat",
+  )
+
+  pengajuan_rows = await PengajuanAbsen.filter(
+    id_karyawan=id_karyawan,
+    tanggal_mulai__lte=end_d,
+    tanggal_akhir__gte=start_d,
+  ).order_by("tanggal_mulai").values(
+    "id_pengajuan",
+    "tipe_pengajuan",
+    "tanggal_mulai",
+    "tanggal_akhir",
+    "status",
+    "keterangan",
+  )
+
+  weekly_trend: dict[str, dict] = {}
+  monthly_trend: dict[str, dict] = {}
+  late_by_weekday: dict[str, int] = defaultdict(int)
+  absence_by_weekday: dict[str, int] = defaultdict(int)
+
+  present_count = 0
+  absent_count = 0
+  pending_count = 0
+  late_count = 0
+
+  for row in absensi_rows:
+    row_date = row["tanggal_absen"].date()
+    week_label = f"{row_date.isocalendar().year}-W{row_date.isocalendar().week:02d}"
+    month_label = row_date.strftime("%Y-%m")
+    weekly_trend.setdefault(week_label, _empty_trend_item(week_label))
+    monthly_trend.setdefault(month_label, _empty_trend_item(month_label))
+
+    pengajuan = (row.get("pengajuan") or "hadir").lower()
+    status_absen = (row.get("status_absen") or "").lower()
+    is_absence = pengajuan in {"cuti", "sakit", "izin"}
+    is_late = int(row.get("is_telat") or 0) == 1
+
+    if is_absence:
+      absent_count += 1
+      weekly_trend[week_label]["tidak_hadir"] += 1
+      monthly_trend[month_label]["tidak_hadir"] += 1
+      absence_by_weekday[_weekday_name(row_date)] += 1
+    else:
+      present_count += 1
+      weekly_trend[week_label]["hadir"] += 1
+      monthly_trend[month_label]["hadir"] += 1
+
+    if status_absen == "pending":
+      pending_count += 1
+      weekly_trend[week_label]["pending"] += 1
+      monthly_trend[month_label]["pending"] += 1
+
+    if is_late:
+      late_count += 1
+      weekly_trend[week_label]["telat"] += 1
+      monthly_trend[month_label]["telat"] += 1
+      late_by_weekday[_weekday_name(row_date)] += 1
+
+  approved_leave_days = 0
+  leave_near_weekend = 0
+  for row in pengajuan_rows:
+    if row["status"] != "approved":
+      continue
+
+    cursor = max(row["tanggal_mulai"], start_d)
+    last_day = min(row["tanggal_akhir"], end_d)
+    while cursor <= last_day:
+      approved_leave_days += 1
+      if cursor.weekday() in {0, 4}:
+        leave_near_weekend += 1
+      absence_by_weekday[_weekday_name(cursor)] += 1
+      cursor += timedelta(days=1)
+
+  attendance_rate = round((present_count / (days_count or 1)) * 100, 2)
+  on_time_rate = round(((present_count - late_count) / (present_count or 1)) * 100, 2)
+  punctuality_score = round((attendance_rate * 0.45) + (on_time_rate * 0.55), 2)
+
+  dominant_late_day = max(late_by_weekday.items(), key=lambda item: item[1], default=None)
+  dominant_absence_day = max(
+    absence_by_weekday.items(),
+    key=lambda item: item[1],
+    default=None,
+  )
+
+  patterns = []
+  if dominant_late_day and dominant_late_day[1] >= 2:
+    patterns.append(
+      {
+        "type": "late_by_weekday",
+        "message": f"Sering telat hari {dominant_late_day[0]}",
+        "count": dominant_late_day[1],
+      }
+    )
+  if leave_near_weekend >= 2:
+    patterns.append(
+      {
+        "type": "leave_near_weekend",
+        "message": "Sering izin/cuti dekat weekend",
+        "count": leave_near_weekend,
+      }
+    )
+  if dominant_absence_day and dominant_absence_day[1] >= 2:
+    patterns.append(
+      {
+        "type": "absence_by_weekday",
+        "message": f"Sering tidak hadir hari {dominant_absence_day[0]}",
+        "count": dominant_absence_day[1],
+      }
+    )
+
+  return {
+    "range": {
+      "start_date": start_d.isoformat(),
+      "end_date": end_d.isoformat(),
+      "days_count": days_count,
+    },
+    "employee": {
+      "id_karyawan": employee["id_karyawan"],
+      "nama_karyawan": employee["nama_karyawan"],
+      "posisi": employee["posisi"],
+      "departemen": employee["departemen__nama_departemen"],
+    },
+    "summary": {
+      "punctuality_score": punctuality_score,
+      "attendance_rate_percent": attendance_rate,
+      "on_time_rate_percent": on_time_rate,
+      "total_record": len(absensi_rows),
+      "hadir": present_count,
+      "tidak_hadir": absent_count,
+      "pending": pending_count,
+      "telat": late_count,
+      "approved_leave_days": approved_leave_days,
+    },
+    "trend": {
+      "weekly": list(weekly_trend.values()),
+      "monthly": list(monthly_trend.values()),
+    },
+    "patterns": patterns,
+    "raw_counts": {
+      "late_by_weekday": dict(late_by_weekday),
+      "absence_by_weekday": dict(absence_by_weekday),
+    },
+  }
+
+
 async def get_pengajuan(tgl: str | None = None):
   query = PengajuanAbsen.all()
   if tgl:
