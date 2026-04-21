@@ -1,14 +1,15 @@
-﻿import hashlib
+import hashlib
 import os
 import uuid
 
 from fastapi import HTTPException, UploadFile
 from fastapi_jwt import JwtAuthorizationCredentials
 
+from app.core.config import get_upload_dir
 from app.models import Akun, Karyawan
 from app.schemas.requests.auth import PasswordUpdateRequest
 
-FOTO_PROFILE = "api_legacy/images/foto_profile"
+FOTO_PROFILE = str(get_upload_dir("profile"))
 
 
 def save_upload_file(upload: UploadFile, dest: str):
@@ -20,19 +21,10 @@ async def update_profile(form_data: dict, user: JwtAuthorizationCredentials) -> 
   filename = None
   if "foto_profile" in form_data and form_data["foto_profile"]:
     filename = f"{uuid.uuid4()}.png"
+    os.makedirs(FOTO_PROFILE, exist_ok=True)
     file_location = os.path.join(FOTO_PROFILE, filename)
     save_upload_file(form_data["foto_profile"], file_location)
 
-  """
-  Bukan pointer. Di Python, ** pada update(**update_data) adalah operator untuk 
-  dictionary unpacking. Artinya isi dict ini, akan diurai 
-  menjadi spt ini pada method update ORM: 
-  update(
-    nama_karyawan=...,
-    email_karyawan=...,
-    nomor_hp=...,
-  )
-  """
   update_data = {
     "nama_karyawan": form_data.get("nama_karyawan"),
     "email_karyawan": form_data.get("email_karyawan"),
