@@ -10,6 +10,7 @@ from tortoise import Tortoise
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
+from app.core.config import get_upload_dir
 from app.core.serializer import serialize_data
 from app.models import (
   Absensi,
@@ -24,8 +25,8 @@ from app.realtime.absensi_ws import absensi_connections
 from app.schemas.requests.absensi import CheckInRequest, CheckOutRequest
 from utils.fn_log_users import logger as logger_user
 
-FOTO_CHECKIN = "api_legacy/images/foto_checkin"
-FOTO_CHECKOUT = "api_legacy/images/foto_checkout"
+FOTO_CHECKIN = str(get_upload_dir("attendance", "checkin"))
+FOTO_CHECKOUT = str(get_upload_dir("attendance", "checkout"))
 STATUS_OK = "ok"
 MESSAGE_ALREADY_CHECKIN = "Anda Sudah Checkin"
 MESSAGE_ALREADY_CHECKOUT = "Anda Sudah CheckOut"
