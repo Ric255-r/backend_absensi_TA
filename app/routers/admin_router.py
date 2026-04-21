@@ -205,6 +205,27 @@ async def get_analytics(
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
+@router.get("/analytics/employee/{id_karyawan}")
+async def get_employee_attendance_analytics(
+  id_karyawan: str,
+  start_date: str | None = Query(None),
+  end_date: str | None = Query(None),
+):
+  try:
+    return await admin_controller.get_employee_attendance_analytics(
+      id_karyawan=id_karyawan,
+      start_date=start_date,
+      end_date=end_date,
+    )
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
 @router.get("/get_pengajuan", response_model=list[PengajuanItemResponse])
 async def get_pengajuan(tgl: str | None = Query(None)):
   try:
