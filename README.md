@@ -79,6 +79,13 @@ http://localhost:5500/docs
 - `PUT /api/absen/check_out`
 - `GET /api/admin/get_analytics`
 - `GET /api/admin/analytics/employee/{id_karyawan}`
+- `GET /api/subscription/status`
+- `POST /api/admin/subscriptions`
+- `PUT /api/admin/subscriptions/{id_subscription}/extend`
+- `PUT /api/admin/subscriptions/{id_subscription}/expire`
+- `GET /api/admin/subscriptions/{id_subscription}/history`
+- `GET /api/admin/audit-logs`
+- `GET /api/admin/audit-logs/export`
 - `GET /api/admin/export_excel`
 - `POST /api/internal/subscriptions/expire`
 - `WS /api/admin/ws-absensi`
@@ -99,6 +106,41 @@ Contoh:
 
 ```txt
 GET /api/admin/analytics/employee/KRY001?start_date=2026-03-01&end_date=2026-03-31
+```
+
+## Subscription Management
+
+Subscription status tersedia untuk frontend melalui:
+
+```txt
+GET /api/subscription/status
+```
+
+Admin dan owner dapat mengelola subscription tanpa diblokir subscription gate:
+
+```txt
+GET /api/admin/subscriptions
+POST /api/admin/subscriptions
+PUT /api/admin/subscriptions/{id_subscription}/extend
+PUT /api/admin/subscriptions/{id_subscription}/expire
+GET /api/admin/subscriptions/{id_subscription}/history
+```
+
+Subscription memiliki grace period 3 hari setelah `end_at`. Selama grace period,
+status frontend akan menjadi `grace_period`.
+
+## Audit Log Viewer
+
+Audit log dapat dilihat dan difilter dari endpoint:
+
+```txt
+GET /api/admin/audit-logs?actor=admin&action=edit&table_name=karyawan&start_date=2026-04-01&end_date=2026-04-30
+```
+
+Export CSV tersedia di:
+
+```txt
+GET /api/admin/audit-logs/export
 ```
 
 ## Catatan Legacy

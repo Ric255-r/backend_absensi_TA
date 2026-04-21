@@ -1,4 +1,6 @@
+import csv
 import hashlib
+import io
 import os
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
@@ -6,7 +8,7 @@ import json
 
 from fastapi import HTTPException
 from fastapi_jwt import JwtAuthorizationCredentials
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from openpyxl import Workbook
 from openpyxl.cell import MergedCell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -61,6 +63,39 @@ def _resolve_analytics_range(
       status_code=400, detail="Tanggal akhir tidak boleh < tanggal mulai"
     )
   return resolved_start, resolved_end
+
+
+def _parse_optional_datetime(value: str | None, end_of_day: bool = False) -> datetime | None:
+  if not value:
+    return None
+
+  try:
+    if "T" in value:
+      return datetime.fromisoformat(value)
+
+    resolved_date = date.fromisoformat(value)
+    return datetime.combine(resolved_date, time.max if end_of_day else time.min)
+  except ValueError:
+    raise HTTPException(
+      status_code=422,
+      detail="Format tanggal harus YYYY-MM-DD atau ISO datetime",
+    )
+
+
+def _serialize_audit_log(row: dict) -> dict:
+  return {
+    "id": row["id"],
+    "actor_username": row["actor_username"],
+    "actor_id_karyawan": row["actor_id_karyawan"],
+    "actor_role": row["actor_role"],
+    "action": row["action"],
+    "table_name": row["table_name"],
+    "record_id": row["record_id"],
+    "before_data": row["before_data"],
+    "after_data": row["after_data"],
+    "metadata": row["metadata"],
+    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+  }
 
 
 async def regis_karyawan(payload: KaryawanCreateRequest) -> dict:
@@ -937,6 +972,111 @@ async def get_employee_attendance_analytics(
       "absence_by_weekday": dict(absence_by_weekday),
     },
   }
+
+
+async def get_audit_logs(
+  actor: str | None = None,
+  action: str | None = None,
+  table_name: str | None = None,
+  start_date: str | None = None,
+  end_date: str | None = None,
+  page: int = 1,
+  per_page: int = 25,
+) -> dict:
+  query = AuditLog.all()
+
+  if actor:
+    query = query.filter(actor_username=actor)
+  if action:
+    query = query.filter(action=action)
+  if table_name:
+    query = query.filter(table_name=table_name)
+
+  start_dt = _parse_optional_datetime(start_date)
+  end_dt = _parse_optional_datetime(end_date, end_of_day=True)
+  if start_dt:
+    query = query.filter(created_at__gte=start_dt)
+  if end_dt:
+    query = query.filter(created_at__lte=end_dt)
+
+  total = await query.count()
+  offset = (page - 1) * per_page
+  rows = await query.order_by("-created_at", "-id").offset(offset).limit(per_page).values(
+    "id",
+    "actor_username",
+    "actor_id_karyawan",
+    "actor_role",
+    "action",
+    "table_name",
+    "record_id",
+    "before_data",
+    "after_data",
+    "metadata",
+    "created_at",
+  )
+
+  return {
+    "status": "ok",
+    "pagination": {
+      "page": page,
+      "per_page": per_page,
+      "total": total,
+      "total_page": (total + per_page - 1) // per_page,
+    },
+    "data": [_serialize_audit_log(row) for row in rows],
+  }
+
+
+async def export_audit_logs_csv(
+  actor: str | None = None,
+  action: str | None = None,
+  table_name: str | None = None,
+  start_date: str | None = None,
+  end_date: str | None = None,
+) -> Response:
+  result = await get_audit_logs(
+    actor=actor,
+    action=action,
+    table_name=table_name,
+    start_date=start_date,
+    end_date=end_date,
+    page=1,
+    per_page=5000,
+  )
+
+  output = io.StringIO()
+  writer = csv.DictWriter(
+    output,
+    fieldnames=[
+      "id",
+      "actor_username",
+      "actor_id_karyawan",
+      "actor_role",
+      "action",
+      "table_name",
+      "record_id",
+      "before_data",
+      "after_data",
+      "metadata",
+      "created_at",
+    ],
+  )
+  writer.writeheader()
+  for row in result["data"]:
+    writer.writerow(
+      {
+        **row,
+        "before_data": json.dumps(row["before_data"], ensure_ascii=False, default=str),
+        "after_data": json.dumps(row["after_data"], ensure_ascii=False, default=str),
+        "metadata": json.dumps(row["metadata"], ensure_ascii=False, default=str),
+      }
+    )
+
+  return Response(
+    content=output.getvalue(),
+    media_type="text/csv",
+    headers={"Content-Disposition": "attachment; filename=audit_logs.csv"},
+  )
 
 
 async def get_pengajuan(tgl: str | None = None):

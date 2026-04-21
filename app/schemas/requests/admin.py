@@ -83,3 +83,19 @@ class UpdatePengajuanRequest(BaseModel):
   tanggal_mulai: str
   tanggal_akhir: str
   alasan_penolakan: str | None = None
+
+
+class SubscriptionCreateRequest(BaseModel):
+  plan_name: str = "default"
+  start_at: str
+  end_at: str
+  notes: str | None = None
+
+
+class SubscriptionExtendRequest(BaseModel):
+  end_at: str
+  notes: str | None = None
+
+
+class SubscriptionExpireRequest(BaseModel):
+  notes: str | None = None

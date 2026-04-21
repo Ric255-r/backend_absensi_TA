@@ -226,6 +226,60 @@ async def get_employee_attendance_analytics(
     return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
+@router.get("/audit-logs")
+async def get_audit_logs(
+  actor: str | None = Query(None),
+  action: str | None = Query(None),
+  table_name: str | None = Query(None),
+  start_date: str | None = Query(None),
+  end_date: str | None = Query(None),
+  page: int = Query(1, ge=1),
+  per_page: int = Query(25, ge=1, le=100),
+):
+  try:
+    return await admin_controller.get_audit_logs(
+      actor=actor,
+      action=action,
+      table_name=table_name,
+      start_date=start_date,
+      end_date=end_date,
+      page=page,
+      per_page=per_page,
+    )
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@router.get("/audit-logs/export")
+async def export_audit_logs(
+  actor: str | None = Query(None),
+  action: str | None = Query(None),
+  table_name: str | None = Query(None),
+  start_date: str | None = Query(None),
+  end_date: str | None = Query(None),
+):
+  try:
+    return await admin_controller.export_audit_logs_csv(
+      actor=actor,
+      action=action,
+      table_name=table_name,
+      start_date=start_date,
+      end_date=end_date,
+    )
+  except HTTPException as e:
+    return JSONResponse(
+      content={"status": "error", "message": e.detail},
+      status_code=e.status_code,
+    )
+  except Exception as e:
+    return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
 @router.get("/get_pengajuan", response_model=list[PengajuanItemResponse])
 async def get_pengajuan(tgl: str | None = Query(None)):
   try:
