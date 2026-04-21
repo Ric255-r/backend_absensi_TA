@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
 from app.controllers.absensi_controller import get_attendance_data, validate_check_in_attendance, validate_check_out_attendance, store_check_in_attendance, store_check_out_attendance
+from app.core.config import get_upload_dir
 from app.dependencies import require_active_subscription
 from app.schemas.requests.absensi import CheckInRequest, CheckOutRequest
 
@@ -15,8 +16,8 @@ router = APIRouter(prefix="/absen", tags=["Absensi"])
 
 LATITUDE_BENGKOM = -0.0544064
 LONGITUDE_BENGKOM = 109.3732664
-FOTO_CHECKIN = "api_legacy/images/foto_checkin"
-FOTO_CHECKOUT = "api_legacy/images/foto_checkout"
+FOTO_CHECKIN = str(get_upload_dir("attendance", "checkin"))
+FOTO_CHECKOUT = str(get_upload_dir("attendance", "checkout"))
 MEDIA_TYPE_PNG = "image/png"
 
 # # Original Lokasi Bengkel Teknologi Indonesia
@@ -29,12 +30,18 @@ def get_lokasi_bengkom():
 
 @router.get("/foto_checkin/{filename}")
 def get_foto_checkin(filename: str):
-  img_path = os.path.join(FOTO_CHECKIN, filename)
+  safe_filename = os.path.basename(filename)
+  if safe_filename != filename:
+    raise HTTPException(status_code=400, detail="Nama file tidak valid")
+  img_path = os.path.join(FOTO_CHECKIN, safe_filename)
   return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
 
 @router.get("/foto_checkout/{filename}")
 def get_foto_checkout(filename: str):
-  img_path = os.path.join(FOTO_CHECKOUT, filename)
+  safe_filename = os.path.basename(filename)
+  if safe_filename != filename:
+    raise HTTPException(status_code=400, detail="Nama file tidak valid")
+  img_path = os.path.join(FOTO_CHECKOUT, safe_filename)
   return FileResponse(img_path, media_type=MEDIA_TYPE_PNG)
 
 @router.get("/my_absen")
