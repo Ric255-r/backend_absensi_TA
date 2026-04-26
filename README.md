@@ -50,12 +50,11 @@ INTERNAL_JOB_TOKEN=change-this-internal-token
 ENABLE_LEGACY_ROUTES=false
 UPLOAD_STORAGE_DIR=storage/uploads
 CORS_ALLOW_ORIGINS=http://localhost:5173,http://localhost:3000
-```
-
-Database saat ini masih memakai `koneksi_config.txt` dengan format:
-
-```txt
-db_name,host,user,password,port
+DB_NAME=absensi_db
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=
+DB_PORT=3306
 ```
 
 ## Menjalankan Aplikasi

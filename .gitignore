@@ -1,4 +1,5 @@
 jwt_auth.py
+.env
 koneksi_config.txt
 admin_info.log
 user_info.log
