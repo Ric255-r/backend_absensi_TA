@@ -1,3 +1,9 @@
+"""
+DEPRECATED: This module is kept only for backward compatibility.
+
+Use app/controllers/auth_controller.py for authentication flows instead.
+"""
+
 import aiomysql
 from fastapi import APIRouter, Request, HTTPException, Security
 from fastapi.responses import JSONResponse
@@ -9,7 +15,7 @@ import hashlib
 from utils.fn_conv_str import serialize_data
 
 # Untuk Routingnya jadi http://192.xx.xx.xx:5500/api
-app = APIRouter()
+app = APIRouter(deprecated=True)
 
 
 @app.post("/login")
