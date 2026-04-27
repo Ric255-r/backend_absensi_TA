@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from tortoise import Tortoise
@@ -10,10 +11,38 @@ SUBSCRIPTION_STATUS_ACTIVE = "active"
 SUBSCRIPTION_STATUS_EXPIRED = "expired"
 INTERNAL_JOB_TOKEN_ENV = "INTERNAL_JOB_TOKEN"
 SUBSCRIPTION_GRACE_PERIOD_DAYS = 3
+APP_TIMEZONE = ZoneInfo("Asia/Jakarta")
+
+"""
+INSERT INTO subscription (
+  plan_name,
+  status,
+  start_at,
+  end_at,
+  notes
+) VALUES (
+  'default',
+  'active',
+  '2026-04-27 00:00:00',
+  '2027-04-27 23:59:59',
+  'Initial subscription'
+);
+
+"""
 
 
 def get_internal_job_token() -> str | None:
   return os.getenv(INTERNAL_JOB_TOKEN_ENV)
+
+
+def normalize_subscription_datetime(value: datetime) -> datetime:
+  if value.tzinfo is None or value.utcoffset() is None:
+    return value
+  return value.astimezone(APP_TIMEZONE).replace(tzinfo=None)
+
+
+def get_subscription_now() -> datetime:
+  return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
 
 
 async def expire_due_subscriptions() -> int:
@@ -38,19 +67,23 @@ async def expire_due_subscriptions() -> int:
 
 
 def get_subscription_grace_end(end_at: datetime) -> datetime:
-  return end_at + timedelta(days=SUBSCRIPTION_GRACE_PERIOD_DAYS)
+  return normalize_subscription_datetime(end_at) + timedelta(
+    days=SUBSCRIPTION_GRACE_PERIOD_DAYS
+  )
 
 
 def is_subscription_usable(subscription: Subscription, now: datetime) -> bool:
   if subscription.status != SUBSCRIPTION_STATUS_ACTIVE:
     return False
-  return subscription.start_at <= now <= get_subscription_grace_end(subscription.end_at)
+  now = normalize_subscription_datetime(now)
+  start_at = normalize_subscription_datetime(subscription.start_at)
+  return start_at <= now <= get_subscription_grace_end(subscription.end_at)
 
 
 async def get_effective_subscription(
   now: datetime | None = None,
 ) -> Subscription | None:
-  now = now or datetime.now()
+  now = normalize_subscription_datetime(now or get_subscription_now())
 
   current_subscription = (
     await Subscription.filter(start_at__lte=now)
@@ -66,7 +99,7 @@ async def get_effective_subscription(
 async def ensure_active_subscription_or_raise() -> Subscription:
   await expire_due_subscriptions()
 
-  now = datetime.now()
+  now = get_subscription_now()
   subscription = await get_effective_subscription(now=now)
   if not subscription:
     raise HTTPException(
@@ -74,7 +107,8 @@ async def ensure_active_subscription_or_raise() -> Subscription:
       detail="Subscription aplikasi belum dikonfigurasi.",
     )
 
-  if subscription.start_at > now:
+  start_at = normalize_subscription_datetime(subscription.start_at)
+  if start_at > now:
     raise HTTPException(
       status_code=403,
       detail="Subscription aplikasi belum aktif.",
