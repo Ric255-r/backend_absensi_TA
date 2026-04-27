@@ -44,9 +44,12 @@ def get_upload_dir(*parts: str) -> Path:
 def read_db_config() -> dict:
   missing = [
     name
-    for name in ("DB_NAME", "DB_HOST", "DB_USER", "DB_PASSWORD", "DB_PORT")
+    for name in ("DB_NAME", "DB_HOST", "DB_USER", "DB_PORT")
     if get_env_str(name) is None
   ]
+
+  if os.getenv("DB_PASSWORD") is None:
+    missing.append("DB_PASSWORD")
 
   if missing:
     raise ValueError(
@@ -57,7 +60,7 @@ def read_db_config() -> dict:
     "db_name": get_env_str("DB_NAME"),
     "host": get_env_str("DB_HOST"),
     "user": get_env_str("DB_USER"),
-    "password": get_env_str("DB_PASSWORD"),
+    "password": os.getenv("DB_PASSWORD", ""),
     "port": get_env_int("DB_PORT"),
   }
 
